@@ -1,3 +1,4 @@
+// src>App.tsx
 /**
  * Demo Application
  * Shows SDK implementation examples
@@ -8,6 +9,8 @@ import { IDScanner } from './sdk/IDScanner';
 import type { SDKConfig } from './sdk/types';
 
 export default function App() {
+  const SHOW_SDK_DEBUG = false;
+
   const [selectedDemo, setSelectedDemo] = useState<'default' | 'custom' | 'embedded'>('default');
 
   // Default configuration
@@ -77,7 +80,14 @@ export default function App() {
   };
 
   return (
-    <div style={{ position: 'relative', minHeight: '100vh' }}>
+    // <div style={{ position: 'relative', minHeight: '100vh' }}>
+   <div style={{
+  position: 'relative',
+  minHeight: '100vh',
+  overflowX: 'hidden',
+}}>
+
+
       {/* Demo Selector */}
       <div style={{
         position: 'fixed',
@@ -123,18 +133,26 @@ export default function App() {
       </div>
 
       {/* SDK Component */}
-      <div style={{ paddingTop: '60px' }}>
-        {/* <div style={{ paddingTop: '20px',
-         paddingLeft: '80px'
-       }}></div> */}
+      <div style={{ paddingTop: '40px' }}>
+
         <IDScanner
           key={selectedDemo}
           config={configs[selectedDemo]}
           callbacks={{
+            // onScanComplete: (data) => {
+            //   console.log('✅ Scan completed:', data);
+            //   alert(`Scan successful!\n\nName: ${data.data.fullName}\nID: ${data.data.idNumber}\nConfidence: ${(data.confidence * 100).toFixed(1)}%`);
+            // },
             onScanComplete: (data) => {
-              console.log('✅ Scan completed:', data);
-              alert(`Scan successful!\n\nName: ${data.data.fullName}\nID: ${data.data.idNumber}\nConfidence: ${(data.confidence * 100).toFixed(1)}%`);
-            },
+  console.log('✅ Scan completed:', data);
+
+  const fullName = (data as any).fullName ?? (data as any).data?.fullName ?? 'N/A';
+  const idNumber = (data as any).idNumber ?? (data as any).data?.idNumber ?? 'N/A';
+  const confidence = (data as any).confidence ?? (data as any).data?.confidence ?? 0;
+
+  alert(`Scan successful!\n\nName: ${fullName}\nID: ${idNumber}\nConfidence: ${(confidence * 100).toFixed(1)}%`);
+},
+
             onScanError: (error) => {
               console.error('❌ Scan error:', error);
             },
@@ -164,6 +182,7 @@ export default function App() {
       </div>
 
       {/* Info Panel */}
+      {SHOW_SDK_DEBUG && (
       <div style={{
         position: 'fixed',
         bottom: '60px',
@@ -194,6 +213,8 @@ export default function App() {
           Check browser console for callbacks
         </div>
       </div>
+        )} 
     </div>
+    
   );
 }

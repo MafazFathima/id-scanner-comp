@@ -3,6 +3,83 @@
  * Complete type definitions for SDK configuration
  */
 
+import React from 'react';
+
+// ============================================================================
+// DOCUMENT TYPES & TWO-SIDED SCANNING (NEW)
+// ============================================================================
+
+export type DocumentType = 
+  | 'drivers-license'
+  | 'national-id'
+  | 'passport'
+  | 'visa';
+
+export type ScanSide = 'front' | 'back';
+
+export interface DocumentRequirements {
+  type: DocumentType;
+  label: string;
+  requiresFront: boolean;
+  requiresBack: boolean;
+  icon: string;
+}
+
+export const DOCUMENT_REQUIREMENTS: Record<DocumentType, DocumentRequirements> = {
+  'drivers-license': {
+    type: 'drivers-license',
+    label: "Driver's License",
+    requiresFront: true,
+    requiresBack: true,
+    icon: '🪪',
+  },
+  'national-id': {
+    type: 'national-id',
+    label: 'National ID',
+    requiresFront: true,
+    requiresBack: true,
+    icon: '🆔',
+  },
+  'passport': {
+    type: 'passport',
+    label: 'Passport',
+    requiresFront: true,
+    requiresBack: true,
+    icon: '🛂',
+  },
+  'visa': {
+    type: 'visa',
+    label: 'Visa',
+    requiresFront: true,
+    requiresBack: true,
+    icon: '📋',
+  },
+};
+
+export interface ScanProgress {
+  documentType: DocumentType;
+  frontImage?: string;
+  frontData?: any;
+  backImage?: string;
+  backData?: any;
+  currentSide: ScanSide;
+  isComplete: boolean;
+}
+
+export interface CompleteScanResult {
+  documentType: DocumentType;
+  frontImage: string;
+  frontData: any;
+  backImage?: string;
+  backData?: any;
+  timestamp: string;
+  confidence: number;
+}
+
+// ============================================================================
+// THEME CONFIGURATION (EXISTING)
+// ============================================================================
+
 export interface SDKTheme {
   colors?: {
     primary?: string;
@@ -66,6 +143,10 @@ export interface SDKTheme {
   };
 }
 
+// ============================================================================
+// SDK CONFIGURATION (EXTENDED)
+// ============================================================================
+
 export interface SDKConfig {
   // Theme configuration
   theme?: SDKTheme;
@@ -74,7 +155,7 @@ export interface SDKConfig {
   appName?: string;
   logo?: string | React.ReactNode;
   
-  // Feature flags
+  // Feature flags (EXTENDED with two-sided scanning)
   features?: {
     showWelcome?: boolean;
     enableHistory?: boolean;
@@ -82,6 +163,7 @@ export interface SDKConfig {
     enableCamera?: boolean;
     enableExport?: boolean;
     enableShare?: boolean;
+    requireBackScan?: boolean; // NEW: Enable/disable two-sided scanning
   };
   
   // Behavior configuration
@@ -113,11 +195,15 @@ export interface SDKConfig {
   };
 }
 
+// ============================================================================
+// SDK CALLBACKS (EXTENDED)
+// ============================================================================
+
 export interface SDKCallbacks {
   // Scan lifecycle
   onScanStart?: () => void;
   onScanProgress?: (progress: number, status: string) => void;
-  onScanComplete?: (data: ScanResult) => void;
+  onScanComplete?: (data: ScanResult | CompleteScanResult) => void; // EXTENDED: Can now receive CompleteScanResult
   onScanError?: (error: ScanError) => void;
   onScanCancel?: () => void;
   
@@ -132,7 +218,22 @@ export interface SDKCallbacks {
   onClose?: () => void;
 }
 
-export type SDKScreen = 'welcome' | 'scan' | 'scanning' | 'results' | 'error' | 'history';
+// ============================================================================
+// SCREEN TYPES (EXTENDED)
+// ============================================================================
+
+export type SDKScreen = 
+  | 'welcome' 
+  | 'scan' 
+  | 'document-selection' // NEW: Added for two-sided scanning
+  | 'scanning' 
+  | 'results' 
+  | 'error' 
+  | 'history';
+
+// ============================================================================
+// SCAN RESULT (EXTENDED)
+// ============================================================================
 
 export interface ScanResult {
   id: string;
@@ -154,14 +255,24 @@ export interface ScanResult {
     imageQuality: number;
     documentCountry?: string;
     documentState?: string;
+    hasFrontScan?: boolean; // NEW: Track if front was scanned
+    hasBackScan?: boolean;  // NEW: Track if back was scanned
   };
 }
+
+// ============================================================================
+// ERROR TYPES (EXISTING)
+// ============================================================================
 
 export interface ScanError {
   code: 'scan-failed' | 'no-id-detected' | 'poor-quality' | 'timeout' | 'unsupported-document';
   message: string;
   details?: any;
 }
+
+// ============================================================================
+// SDK INSTANCE (EXISTING)
+// ============================================================================
 
 export interface SDKInstance {
   // Navigation methods

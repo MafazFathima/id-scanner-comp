@@ -1,3 +1,4 @@
+// src>screen>ERrorScreen.tsx
 import React from 'react';
 import { NavigationBar } from '../components/NavigationBar';
 import { Button } from '../components/Button';
