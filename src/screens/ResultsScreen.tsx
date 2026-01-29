@@ -1,26 +1,16 @@
-// src/screens/ResultsScreen.tsx 
+// src/screens/ResultsScreen.tsx - FIXED VERSION
 import React, { useState } from 'react';
 import { NavigationBar } from '../components/NavigationBar';
 import { Button } from '../components/Button';
-import { CheckCircle, Copy, Download, Share2, User, Calendar, MapPin, Hash, FileText, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle, Copy, Download, Zap, TrendingUp, User, Calendar, MapPin, Hash, FileText } from 'lucide-react';
 import { StatusBadge } from '../components/StatusBadge';
 import { useIsDesktop } from '../hooks/useMediaQuery';
 import { Header } from '../components/Header';
-import type { IDScanResult } from '../services/textractService';
+import type { HybridScanResult } from '../types/scanResults';
 
 interface ResultsScreenProps {
   scanData?: any;
   capturedImages?: {
-    front?: string;
-    back?: string;
-  };
-  onBack: () => void;
-  onNewScan: () => void;
-}
-
-interface ResultsScreenInternalProps {
-  scanData: any;
-  capturedImages: {
     front?: string;
     back?: string;
   };
@@ -47,8 +37,10 @@ const FIELD_LABELS: Record<string, string> = {
   restrictions: "Restrictions",
   sex: "Sex",
   height: "Height",
-  suffix: "Suffix",
   eyeColor: "Eye Color",
+  vehicleClass: "Vehicle Class",
+  weight: "Weight",
+  suffix: "Suffix",
 };
 
 const FIELD_ICONS: Record<string, React.ReactNode> = {
@@ -57,21 +49,13 @@ const FIELD_ICONS: Record<string, React.ReactNode> = {
   middleName: <User size={20} color="var(--color-primary)" />,
   lastName: <User size={20} color="var(--color-primary)" />,
   idNumber: <Hash size={20} color="var(--color-primary)" />,
-  idType: <FileText size={20} color="var(--color-primary)" />,
-  issueDate: <Calendar size={20} color="var(--color-primary)" />,
-  expirationDate: <Calendar size={20} color="var(--color-primary)" />,
   dateOfBirth: <Calendar size={20} color="var(--color-primary)" />,
+  expirationDate: <Calendar size={20} color="var(--color-primary)" />,
+  issueDate: <Calendar size={20} color="var(--color-primary)" />,
   address: <MapPin size={20} color="var(--color-primary)" />,
   city: <MapPin size={20} color="var(--color-primary)" />,
   state: <MapPin size={20} color="var(--color-primary)" />,
-  stateName: <MapPin size={20} color="var(--color-primary)" />,
   zipCode: <MapPin size={20} color="var(--color-primary)" />,
-  endorsements: <FileText size={20} color="var(--color-primary)" />,
-  restrictions: <FileText size={20} color="var(--color-primary)" />,
-  sex: <User size={20} color="var(--color-primary)" />,
-  height: <User size={20} color="var(--color-primary)" />,
-  suffix: <User size={20} color="var(--color-primary)" />,
-  eyeColor: <User size={20} color="var(--color-primary)" />,
 };
 
 export function ResultsScreen({ scanData, capturedImages, onBack, onNewScan }: ResultsScreenProps) {
@@ -84,25 +68,31 @@ export function ResultsScreen({ scanData, capturedImages, onBack, onNewScan }: R
     );
   }
 
-  // // Merge front and back data
-  // const frontData = scanData.frontData || scanData;
-  // const backData = scanData.backData;
-  // const mergedData = { ...frontData, ...(backData || {}) };
+  // CRITICAL FIX: Extract hybrid results correctly
+  const frontHybridResult: HybridScanResult = scanData.frontData || scanData;
+  const backHybridResult: HybridScanResult | undefined = scanData.backData;
 
-const frontData = scanData.frontData || scanData;
-const backData = scanData.backData;
-const mergedData = { 
-  ...frontData, 
-  ...(backData && Object.fromEntries(
-    Object.entries(backData).filter(([_, v]) => v !== '' && v !== undefined && v !== null)
-  ))
-};
+  // CRITICAL FIX: Merge data more intelligently
+  const mergedData = {
+    ...frontHybridResult.selectedData,
+    ...Object.fromEntries(
+      Object.entries(backHybridResult?.selectedData || {}).filter(
+        ([key, value]) => value !== '' && value !== undefined && value !== null
+      )
+    ),
+  };
+
+  console.log('🔍 ResultsScreen - Front data:', frontHybridResult);
+  console.log('🔍 ResultsScreen - Back data:', backHybridResult);
+  console.log('🔍 ResultsScreen - Merged data:', mergedData);
 
   const isDesktop = useIsDesktop();
 
   return isDesktop ? (
     <ResultsScreenDesktop 
-      scanData={mergedData} 
+      frontHybridResult={frontHybridResult}
+      backHybridResult={backHybridResult}
+      mergedData={mergedData}
       capturedImages={capturedImages || {}} 
       onBack={onBack} 
       onNewScan={onNewScan}
@@ -110,7 +100,9 @@ const mergedData = {
     />
   ) : (
     <ResultsScreenMobile 
-      scanData={mergedData} 
+      frontHybridResult={frontHybridResult}
+      backHybridResult={backHybridResult}
+      mergedData={mergedData}
       capturedImages={capturedImages || {}} 
       onBack={onBack} 
       onNewScan={onNewScan}
@@ -119,19 +111,33 @@ const mergedData = {
   );
 }
 
+interface ResultsScreenInternalProps {
+  frontHybridResult: HybridScanResult;
+  backHybridResult?: HybridScanResult;
+  mergedData: Record<string, any>;
+  capturedImages: { front?: string; back?: string };
+  onBack: () => void;
+  onNewScan: () => void;
+  hasBothSides: boolean;
+}
+
 function ResultsScreenMobile({ 
-  scanData, 
+  frontHybridResult,
+  backHybridResult,
+  mergedData,
   capturedImages, 
   onBack, 
   onNewScan,
   hasBothSides 
-}: ResultsScreenInternalProps & { hasBothSides: boolean }) {
+}: ResultsScreenInternalProps) {
   const [selectedSide, setSelectedSide] = useState<'front' | 'back'>('front');
-  const confidencePercent = Math.round(scanData.confidence * 100);
-
+  
+  // CRITICAL FIX: Show results from correct side
+  const displayedResult = selectedSide === 'front' ? frontHybridResult : backHybridResult;
+  
   const handleCopy = () => {
-    const textData = Object.entries(scanData)
-      .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && !key.startsWith('_'))
+    const textData = Object.entries(mergedData)
+      .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && key !== 'rawText')
       .map(([key, value]) => `${FIELD_LABELS[key] || key}: ${value}`)
       .join('\n');
 
@@ -156,6 +162,7 @@ function ResultsScreenMobile({
         gap: 'var(--spacing-lg)',
       }}>
 
+        {/* Success Card with Hybrid Info */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -177,6 +184,7 @@ function ResultsScreenMobile({
           }}>
             <CheckCircle size={40} color="var(--color-success)" />
           </div>
+          
           <div style={{
             display: 'flex',
             flexDirection: 'column',
@@ -184,18 +192,86 @@ function ResultsScreenMobile({
             gap: 'var(--spacing-xs)',
           }}>
             <h2 style={{ margin: 0 }}>Scan Successful</h2>
+            
+            {/* CRITICAL FIX: Show overall confidence from merged data */}
             <StatusBadge 
-              text={`Verified • ${confidencePercent}% Confidence`} 
-              type={confidencePercent >= 90 ? 'success' : 'warning'} 
+              text={`${frontHybridResult.overallConfidence}% Confidence`} 
+              type={frontHybridResult.overallConfidence >= 90 ? 'success' : 'warning'} 
             />
+            
+            {/* Hybrid scan method indicator */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '6px 12px',
+              backgroundColor: 'rgba(251, 191, 36, 0.1)',
+              borderRadius: 'var(--radius-sm)',
+              marginTop: '8px',
+            }}>
+              <Zap size={14} color="#f59e0b" />
+              <span style={{ fontSize: '12px', color: '#f59e0b', fontWeight: 600 }}>
+                Hybrid AI: {frontHybridResult.selectedMethod.toUpperCase()}
+              </span>
+            </div>
+
             {hasBothSides && (
-              <span className="caption" style={{ color: 'var(--color-success)' }}>
+              <span className="caption" style={{ color: 'var(--color-text-secondary)', marginTop: '8px' }}>
                 ✓ Front & Back sides scanned
               </span>
             )}
           </div>
 
-          {/* Image switcher for two-sided docs */}
+          {/* CRITICAL FIX: Show comparison for selected side */}
+          {displayedResult && (
+            <div style={{
+              width: '100%',
+              padding: 'var(--spacing-sm)',
+              backgroundColor: 'rgba(59, 130, 246, 0.05)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+            }}>
+              <div style={{
+                fontSize: '12px',
+                fontWeight: 600,
+                marginBottom: '8px',
+                color: 'var(--color-text)',
+                textAlign: 'center',
+              }}>
+                {selectedSide.toUpperCase()} Side Scan Comparison
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '13px',
+                marginBottom: '8px',
+              }}>
+                <span>📄 OCR (Textract):</span>
+                <strong>{displayedResult.comparisonDetails.textractConfidence}%</strong>
+              </div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                fontSize: '13px',
+              }}>
+                <span>📊 Barcode (PDF417):</span>
+                <strong>{displayedResult.comparisonDetails.pdf417Confidence}%</strong>
+              </div>
+              <div style={{
+                marginTop: '8px',
+                paddingTop: '8px',
+                borderTop: '1px solid rgba(59, 130, 246, 0.2)',
+                fontSize: '12px',
+                color: 'var(--color-text-secondary)',
+                textAlign: 'center',
+              }}>
+                <TrendingUp size={12} style={{ marginRight: '4px' }} />
+                Best: {displayedResult.comparisonDetails.recommendedMethod.toUpperCase()}
+              </div>
+            </div>
+          )}
+
+          {/* Image switcher */}
           {hasBothSides && (
             <>
               <div style={{
@@ -235,7 +311,6 @@ function ResultsScreenMobile({
             </>
           )}
 
-          {/* Single image for single-sided docs */}
           {!hasBothSides && capturedImages.front && (
             <img 
               src={capturedImages.front} 
@@ -251,6 +326,7 @@ function ResultsScreenMobile({
           )}
         </div>
 
+        {/* Extracted Information */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -258,8 +334,16 @@ function ResultsScreenMobile({
         }}>
           <h2 style={{ margin: 0 }}>Extracted Information</h2>
 
-          {Object.entries(scanData)
-            .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && !key.startsWith('_'))
+          {Object.entries(mergedData)
+            .filter(([key, value]) => 
+              value !== undefined && 
+              value !== null &&
+              value !== '' &&
+              key !== 'rawResponse' && 
+              key !== 'confidence' && 
+              key !== 'rawText' &&
+              !key.startsWith('_')
+            )
             .map(([key, value]) => (
               <DataField
                 key={key}
@@ -269,8 +353,22 @@ function ResultsScreenMobile({
               />
             ))
           }
+
+          {/* Show message if no data */}
+          {Object.keys(mergedData).filter(k => 
+            mergedData[k] && k !== 'rawText' && k !== 'rawResponse'
+          ).length === 0 && (
+            <div style={{
+              padding: 'var(--spacing-lg)',
+              textAlign: 'center',
+              color: 'var(--color-text-secondary)',
+            }}>
+              No data extracted from scan
+            </div>
+          )}
         </div>
 
+        {/* Actions */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -278,10 +376,16 @@ function ResultsScreenMobile({
           marginTop: 'auto',
         }}>
           <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
-            <Button variant="secondary" fullWidth icon={<Copy size={20} />} onClick={handleCopy}>Copy</Button>
-            <Button variant="secondary" fullWidth icon={<Download size={20} />}>Export</Button>
+            <Button variant="secondary" fullWidth icon={<Copy size={20} />} onClick={handleCopy}>
+              Copy
+            </Button>
+            <Button variant="secondary" fullWidth icon={<Download size={20} />}>
+              Export
+            </Button>
           </div>
-          <Button variant="primary" fullWidth onClick={onNewScan}>Scan Another ID</Button>
+          <Button variant="primary" fullWidth onClick={onNewScan}>
+            Scan Another ID
+          </Button>
         </div>
       </main>
     </div>
@@ -289,18 +393,20 @@ function ResultsScreenMobile({
 }
 
 function ResultsScreenDesktop({ 
-  scanData, 
+  frontHybridResult,
+  backHybridResult,
+  mergedData,
   capturedImages, 
   onBack, 
   onNewScan,
   hasBothSides 
-}: ResultsScreenInternalProps & { hasBothSides: boolean }) {
+}: ResultsScreenInternalProps) {
   const [selectedSide, setSelectedSide] = useState<'front' | 'back'>('front');
-  const confidencePercent = Math.round(scanData.confidence * 100);
+  const displayedResult = selectedSide === 'front' ? frontHybridResult : backHybridResult;
 
   const handleCopy = () => {
-    const textData = Object.entries(scanData)
-      .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && !key.startsWith('_'))
+    const textData = Object.entries(mergedData)
+      .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && key !== 'rawText')
       .map(([key, value]) => `${FIELD_LABELS[key] || key}: ${value}`)
       .join('\n');
 
@@ -327,6 +433,7 @@ function ResultsScreenDesktop({
         margin: '0 auto',
       }}>
 
+        {/* Left Column */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
           <div style={{
             display: 'flex',
@@ -349,26 +456,68 @@ function ResultsScreenDesktop({
             }}>
               <CheckCircle size={48} color="var(--color-success)" />
             </div>
+            
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
               <h1 style={{ margin: 0 }}>Scan Successful</h1>
               <StatusBadge 
-                text={`Verified • ${confidencePercent}% Confidence`} 
-                type={confidencePercent >= 90 ? 'success' : 'warning'} 
+                text={`${frontHybridResult.overallConfidence}% Confidence`} 
+                type={frontHybridResult.overallConfidence >= 90 ? 'success' : 'warning'} 
               />
-              {hasBothSides && (
-                <span className="caption" style={{ color: 'var(--color-success)', fontWeight: 600 }}>
-                  ✓ Both sides verified
-                </span>
-              )}
-            </div>
-
-            {/* Image display with side toggle */}
-            {hasBothSides && (
+              
               <div style={{
                 display: 'flex',
-                gap: 'var(--spacing-sm)',
-                marginTop: 'var(--spacing-md)',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '8px 16px',
+                backgroundColor: 'rgba(251, 191, 36, 0.1)',
+                borderRadius: 'var(--radius-md)',
+                marginTop: '8px',
               }}>
+                <Zap size={16} color="#f59e0b" />
+                <span style={{ fontSize: '14px', color: '#f59e0b', fontWeight: 600 }}>
+                  Hybrid AI Scan - {frontHybridResult.selectedMethod.toUpperCase()} Selected
+                </span>
+              </div>
+            </div>
+
+            {/* Comparison card */}
+            {displayedResult && (
+              <div style={{
+                width: '100%',
+                padding: 'var(--spacing-md)',
+                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                borderRadius: 'var(--radius-lg)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+              }}>
+                <h3 style={{ margin: '0 0 12px 0', fontSize: '14px' }}>
+                  {selectedSide.toUpperCase()} Side Scan Comparison
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span>📄 OCR (Textract):</span>
+                    <strong>{displayedResult.comparisonDetails.textractConfidence}%</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '14px' }}>
+                    <span>📊 Barcode (PDF417):</span>
+                    <strong>{displayedResult.comparisonDetails.pdf417Confidence}%</strong>
+                  </div>
+                  <div style={{
+                    marginTop: '8px',
+                    paddingTop: '8px',
+                    borderTop: '1px solid rgba(59, 130, 246, 0.2)',
+                    fontSize: '13px',
+                    color: 'var(--color-primary)',
+                  }}>
+                    <TrendingUp size={14} style={{ marginRight: '4px' }} />
+                    Recommended: {displayedResult.comparisonDetails.recommendedMethod.toUpperCase()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Image display */}
+            {hasBothSides && (
+              <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-md)' }}>
                 <Button
                   variant={selectedSide === 'front' ? 'primary' : 'secondary'}
                   onClick={() => setSelectedSide('front')}
@@ -384,59 +533,23 @@ function ResultsScreenDesktop({
               </div>
             )}
 
-            {capturedImages[selectedSide] ? (
-              <img src={capturedImages[selectedSide]} alt={`${selectedSide} side`} style={{
-                width: '100%',
-                maxWidth: '400px',
-                borderRadius: 'var(--radius-lg)',
-                border: '2px solid var(--color-border)',
-                marginTop: 'var(--spacing-md)',
-              }} />
-            ) : capturedImages.front ? (
-              <img src={capturedImages.front} alt="Scanned document" style={{
-                width: '100%',
-                maxWidth: '400px',
-                borderRadius: 'var(--radius-lg)',
-                border: '2px solid var(--color-border)',
-                marginTop: 'var(--spacing-md)',
-              }} />
-            ) : (
-              <div style={{
-                width: '100%',
-                maxWidth: '400px',
-                aspectRatio: '1.586',
-                backgroundColor: 'var(--color-background)',
-                borderRadius: 'var(--radius-lg)',
-                border: '2px solid var(--color-border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginTop: 'var(--spacing-md)',
-              }}>
-                <FileText size={48} color="var(--color-text-secondary)" />
-              </div>
+            {capturedImages[selectedSide] && (
+              <img 
+                src={capturedImages[selectedSide]} 
+                alt={`${selectedSide} side`} 
+                style={{
+                  width: '100%',
+                  maxWidth: '400px',
+                  borderRadius: 'var(--radius-lg)',
+                  border: '2px solid var(--color-border)',
+                  marginTop: 'var(--spacing-md)',
+                }} 
+              />
             )}
-          </div>
-
-          <div style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--spacing-md)',
-            padding: 'var(--spacing-lg)',
-            backgroundColor: 'var(--color-surface)',
-            borderRadius: 'var(--radius-lg)',
-            border: '1px solid var(--color-border)',
-          }}>
-            <h2 style={{ margin: 0 }}>Document Details</h2>
-            {Object.entries(scanData)
-              .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && !key.startsWith('_'))
-              .map(([key, value]) => (
-                <DetailRow key={key} label={FIELD_LABELS[key] || key} value={String(value)} />
-              ))
-            }
           </div>
         </div>
 
+        {/* Right Column */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 'var(--spacing-lg)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h1 style={{ margin: 0 }}>Extracted Data</h1>
@@ -446,8 +559,16 @@ function ResultsScreenDesktop({
             </div>
           </div>
 
-          {Object.entries(scanData)
-            .filter(([key, value]) => value !== undefined && key !== 'rawResponse' && key !== 'confidence' && !key.startsWith('_'))
+          {Object.entries(mergedData)
+            .filter(([key, value]) => 
+              value !== undefined && 
+              value !== null &&
+              value !== '' &&
+              key !== 'rawResponse' && 
+              key !== 'confidence' && 
+              key !== 'rawText' &&
+              !key.startsWith('_')
+            )
             .map(([key, value]) => (
               <DataField
                 key={key}
@@ -472,10 +593,9 @@ interface DataFieldProps {
   icon: React.ReactNode;
   label: string;
   value: string;
-  mono?: boolean;
 }
 
-function DataField({ icon, label, value, mono = false }: DataFieldProps) {
+function DataField({ icon, label, value }: DataFieldProps) {
   return (
     <div style={{
       display: 'flex',
@@ -500,26 +620,10 @@ function DataField({ icon, label, value, mono = false }: DataFieldProps) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', flex: 1 }}>
         <span className="caption">{label}</span>
-        <span className={mono ? 'mono' : ''} style={{ fontWeight: 600, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
+        <span style={{ fontWeight: 600, color: 'var(--color-text-primary)', wordBreak: 'break-word' }}>
           {value}
         </span>
       </div>
-    </div>
-  );
-}
-
-function DetailRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: 'var(--spacing-md)',
-    }}>
-      <span className="caption">{label}</span>
-      <span className={mono ? 'mono' : 'caption'} style={{ fontWeight: 600, color: 'var(--color-text-primary)', textAlign: 'right' }}>
-        {value}
-      </span>
     </div>
   );
 }

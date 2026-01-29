@@ -1,10 +1,10 @@
-// src/screens/ScanningScreen.tsx - FIXED: Proper camera remounting for back side
+// src/screens/ScanningScreen.tsx - HYBRID VERSION (Textract + PDF417)
 import React, { useEffect, useState } from 'react';
 import { NavigationBar } from '../components/NavigationBar';
-import { Loader2, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, RotateCcw, Zap } from 'lucide-react';
 import { CameraCapture } from '../components/CameraCapture';
-import { scanIDWithTextract } from '../services/textractService';
-import type { IDScanResult } from '../services/textractService';
+import { hybridScanService } from '../services/hybridScanService';
+import type { HybridScanResult, ScanMethod } from '../methods/types/scanResults';
 import type { DocumentType, ScanSide, ScanProgress } from '../sdk/types';
 import { Button } from '../components/Button';
 
@@ -19,9 +19,9 @@ interface ScanningScreenProps {
 interface CompleteScanResultData {
   documentType: DocumentType;
   frontImage: string;
-  frontData: IDScanResult;
+  frontData: HybridScanResult;
   backImage?: string;
-  backData?: IDScanResult;
+  backData?: HybridScanResult;
 }
 
 type ProcessingStep = 'capture' | 'processing' | 'transition' | 'complete';
@@ -45,46 +45,73 @@ export function ScanningScreen({
   const [status, setStatus] = useState('Initializing...');
   const [error, setError] = useState<string | null>(null);
   
-  // CRITICAL: Key to force complete remount of CameraCapture component
-  const [cameraKey, setCameraKey] = useState<number>(0);
+  // Hybrid scan specific states
+  const [currentScanMethod, setCurrentScanMethod] = useState<ScanMethod | null>(null);
+  const [scanMethodsProgress, setScanMethodsProgress] = useState({
+    textract: 0,
+    pdf417: 0,
+  });
   
-  // CRITICAL: Flag to control when to show camera
+  // Camera control states
+  const [cameraKey, setCameraKey] = useState<number>(0);
   const [showCamera, setShowCamera] = useState<boolean>(true);
 
   const handleImageCapture = async (imageBase64: string) => {
     console.log(`📸 ${currentSide.toUpperCase()} side captured, size:`, imageBase64.length);
     setCapturedImage(imageBase64);
     
-    // IMPORTANT: Hide camera immediately to trigger cleanup
     setShowCamera(false);
     setCurrentStep('processing');
     
-    await processImage(imageBase64, currentSide);
+    await processImageWithHybridScan(imageBase64, currentSide);
   };
 
-  const processImage = async (imageBase64: string, side: ScanSide) => {
+  const processImageWithHybridScan = async (imageBase64: string, side: ScanSide) => {
     try {
-      setStatus(`Processing ${side} side...`);
+      setStatus(`Analyzing ${side} side with AI...`);
+      setProgress(10);
+      await delay(300);
+
+      setStatus('Preparing image for multi-method scanning...');
       setProgress(20);
-      await delay(500);
+      await delay(300);
 
-      setStatus('Preparing image for processing...');
-      setProgress(40);
-      await delay(500);
-
-      setStatus('Encoding image data...');
-      setProgress(60);
-      await delay(500);
-
-      setStatus(`Extracting data from ${side} side...`);
-      setProgress(80);
-
-      console.log('🔍 Calling AWS Textract...');
-      const ocrResult = await scanIDWithTextract(imageBase64);
-      console.log('✅ Textract response received:', ocrResult);
+      // Run hybrid scan (both Textract and PDF417)
+      setStatus('🔍 Scanning with OCR (Textract)...');
+      setProgress(30);
       
+      setStatus('📊 Scanning barcode (PDF417)...');
+      setProgress(40);
+
+      console.log('🔄 Starting hybrid scan (Textract + PDF417)...');
+      
+      const hybridResult = await hybridScanService.scanWithBothMethods(
+        imageBase64,
+        {
+          runInParallel: true, // Run both simultaneously for speed
+          onProgress: (method, methodProgress) => {
+            // Update progress for individual methods
+            setScanMethodsProgress(prev => ({
+              ...prev,
+              [method]: methodProgress,
+            }));
+            setCurrentScanMethod(method);
+            
+            // Update overall progress (average of both)
+            const avgProgress = (scanMethodsProgress.textract + scanMethodsProgress.pdf417) / 2;
+            setProgress(Math.min(85, 40 + (avgProgress * 0.45)));
+          },
+        }
+      );
+
+      console.log('✅ Hybrid scan complete:', hybridResult);
+
       setProgress(90);
-      setStatus('Validating extracted information...');
+      setStatus('Comparing scan results...');
+      await delay(500);
+
+      setProgress(95);
+      setStatus(`Selected best method: ${hybridResult.selectedMethod.toUpperCase()}`);
       await delay(500);
 
       setProgress(100);
@@ -94,8 +121,8 @@ export function ScanningScreen({
       const updatedProgress: ScanProgress = {
         ...scanProgress,
         ...(side === 'front' 
-          ? { frontImage: imageBase64, frontData: ocrResult }
-          : { backImage: imageBase64, backData: ocrResult }
+          ? { frontImage: imageBase64, frontData: hybridResult }
+          : { backImage: imageBase64, backData: hybridResult }
         ),
       };
 
@@ -109,15 +136,16 @@ export function ScanningScreen({
         setCurrentStep('transition');
         await delay(2000);
         
-        // CRITICAL: Switch to back side and remount camera
         console.log('🔄 Switching to back side, remounting camera...');
         setCurrentSide('back');
-        setCameraKey(prev => prev + 1); // Force new camera instance
-        setShowCamera(true); // Show camera again
+        setCameraKey(prev => prev + 1);
+        setShowCamera(true);
         setCurrentStep('capture');
         setCapturedImage(null);
         setProgress(0);
         setError(null);
+        setCurrentScanMethod(null);
+        setScanMethodsProgress({ textract: 0, pdf417: 0 });
         setStatus('Position BACK side in frame');
         
       } else {
@@ -129,9 +157,9 @@ export function ScanningScreen({
         const completeResult: CompleteScanResultData = {
           documentType,
           frontImage: updatedProgress.frontImage!,
-          frontData: updatedProgress.frontData!,
+          frontData: updatedProgress.frontData as HybridScanResult,
           backImage: updatedProgress.backImage,
-          backData: updatedProgress.backData,
+          backData: updatedProgress.backData as HybridScanResult,
         };
 
         console.log('📦 Sending complete result:', completeResult);
@@ -154,22 +182,30 @@ export function ScanningScreen({
 
   const handleRetry = () => {
     console.log(`🔄 Retrying ${currentSide} side scan...`);
-    setCameraKey(prev => prev + 1); // Force remount
+    setCameraKey(prev => prev + 1);
     setShowCamera(true);
     setCurrentStep('capture');
     setCapturedImage(null);
     setProgress(0);
     setError(null);
+    setCurrentScanMethod(null);
+    setScanMethodsProgress({ textract: 0, pdf417: 0 });
     setStatus(`Position ${currentSide.toUpperCase()} side in frame`);
   };
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      hybridScanService.cleanup();
+    };
+  }, []);
+
   // Step 1: Show camera capture
   if (currentStep === 'capture' && showCamera) {
     return (
       <div style={{ position: 'relative' }}>
-        {/* Side indicator banner */}
         <div style={{
           position: 'absolute',
           top: 0,
@@ -234,7 +270,7 @@ export function ScanningScreen({
     );
   }
 
-  // Step 3 & 4: Show processing screen
+  // Step 3 & 4: Show processing screen with method indicators
   return (
     <div style={{
       minHeight: '100vh',
@@ -246,7 +282,6 @@ export function ScanningScreen({
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background - Show captured image */}
       {capturedImage && (
         <div style={{
           position: 'absolute',
@@ -280,20 +315,59 @@ export function ScanningScreen({
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Side indicator */}
+        {/* Side indicator with hybrid scan badge */}
         <div style={{
-          padding: '12px 24px',
-          backgroundColor: currentSide === 'front' ? '#3b82f6' : '#8b5cf6',
-          borderRadius: 'var(--radius-lg)',
-          color: 'white',
-          fontWeight: 600,
-          fontSize: '18px',
-          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 'var(--spacing-sm)',
         }}>
-          Processing {currentSide.toUpperCase()} side
-          {scanProgress.frontImage && currentSide === 'back' && (
-            <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
-              ✓ Front side verified
+          <div style={{
+            padding: '12px 24px',
+            backgroundColor: currentSide === 'front' ? '#3b82f6' : '#8b5cf6',
+            borderRadius: 'var(--radius-lg)',
+            color: 'white',
+            fontWeight: 600,
+            fontSize: '18px',
+            textAlign: 'center',
+          }}>
+            Processing {currentSide.toUpperCase()} side
+            {scanProgress.frontImage && currentSide === 'back' && (
+              <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
+                ✓ Front side verified
+              </div>
+            )}
+          </div>
+
+          {/* Hybrid scan indicator */}
+          <div style={{
+            display: 'flex',
+            gap: '8px',
+            padding: '8px 16px',
+            backgroundColor: 'rgba(251, 191, 36, 0.2)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid rgba(251, 191, 36, 0.4)',
+          }}>
+            <Zap size={16} color="#fbbf24" />
+            <span style={{ fontSize: '13px', color: '#fbbf24', fontWeight: 600 }}>
+              Hybrid AI Scan (OCR + Barcode)
+            </span>
+          </div>
+
+          {/* Method progress indicators */}
+          {currentScanMethod && (
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              fontSize: '12px',
+              color: 'white',
+            }}>
+              <div style={{ opacity: currentScanMethod === 'textract' ? 1 : 0.5 }}>
+                📄 OCR: {scanMethodsProgress.textract}%
+              </div>
+              <div style={{ opacity: currentScanMethod === 'pdf417' ? 1 : 0.5 }}>
+                📊 Barcode: {scanMethodsProgress.pdf417}%
+              </div>
             </div>
           )}
         </div>
@@ -449,7 +523,7 @@ export function ScanningScreen({
               }}>
                 {scanProgress.frontImage 
                   ? '📋 Preparing to scan back side...' 
-                  : '🔒 All processing happens securely on your device'
+                  : '⚡ Using AI hybrid scan for maximum accuracy'
                 }
               </p>
             </div>

@@ -1,7 +1,4 @@
-/**
- * Universal ID Scanner SDK Types
- * Complete type definitions for SDK configuration
- */
+// src>sdk>types.ts
 
 import React from 'react';
 
