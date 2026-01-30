@@ -1,10 +1,10 @@
-// src/screens/ScanningScreen.tsx - FIXED: Proper camera remounting for back side
+// src/screens/ScanningScreen.tsx - MODIFIED: Single API call for both sides
 import React, { useEffect, useState } from 'react';
 import { NavigationBar } from '../components/NavigationBar';
 import { Loader2, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
 import { CameraCapture } from '../components/CameraCapture';
 import { scanIDWithTextract } from '../services/textractService';
-import type { IDScanResult } from '../services/textractService';
+import type { IDScanResult, DualSideScanResult } from '../services/textractService';
 import type { DocumentType, ScanSide, ScanProgress } from '../sdk/types';
 import { Button } from '../components/Button';
 
@@ -24,7 +24,13 @@ interface CompleteScanResultData {
   backData?: IDScanResult;
 }
 
-type ProcessingStep = 'capture' | 'processing' | 'transition' | 'complete';
+// CHANGED: New processing steps to reflect single API call workflow
+type ProcessingStep = 
+  | 'capture-front'      // Capturing front side
+  | 'transition'         // Transition between front and back
+  | 'capture-back'       // Capturing back side
+  | 'processing'         // Processing BOTH sides with single API call
+  | 'complete';          // All done
 
 export function ScanningScreen({ 
   onComplete, 
@@ -33,115 +39,144 @@ export function ScanningScreen({
   documentType,
   requiresBackScan = true,
 }: ScanningScreenProps) {
-  const [currentStep, setCurrentStep] = useState<ProcessingStep>('capture');
+  const [currentStep, setCurrentStep] = useState<ProcessingStep>('capture-front');
   const [currentSide, setCurrentSide] = useState<ScanSide>('front');
-  const [scanProgress, setScanProgress] = useState<ScanProgress>({
-    documentType,
-    currentSide: 'front',
-    isComplete: false,
-  });
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+  
+  // CHANGED: Store both images before processing
+  // We collect both images first, then make ONE API call
+  const [frontImage, setFrontImage] = useState<string | null>(null);
+  const [backImage, setBackImage] = useState<string | null>(null);
+  
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('Initializing...');
+  const [status, setStatus] = useState('Position FRONT side in frame');
   const [error, setError] = useState<string | null>(null);
   
-  // CRITICAL: Key to force complete remount of CameraCapture component
+  // Camera remounting controls
   const [cameraKey, setCameraKey] = useState<number>(0);
-  
-  // CRITICAL: Flag to control when to show camera
   const [showCamera, setShowCamera] = useState<boolean>(true);
 
+  /**
+   * CHANGED: Handle image capture for either front or back
+   * Now we just store the image and move to the next step
+   * No API call is made until we have both images (or just front if back not required)
+   */
   const handleImageCapture = async (imageBase64: string) => {
     console.log(`📸 ${currentSide.toUpperCase()} side captured, size:`, imageBase64.length);
-    setCapturedImage(imageBase64);
     
-    // IMPORTANT: Hide camera immediately to trigger cleanup
+    // Hide camera immediately
     setShowCamera(false);
-    setCurrentStep('processing');
     
-    await processImage(imageBase64, currentSide);
-  };
-
-  const processImage = async (imageBase64: string, side: ScanSide) => {
-    try {
-      setStatus(`Processing ${side} side...`);
-      setProgress(20);
-      await delay(500);
-
-      setStatus('Preparing image for processing...');
-      setProgress(40);
-      await delay(500);
-
-      setStatus('Encoding image data...');
-      setProgress(60);
-      await delay(500);
-
-      setStatus(`Extracting data from ${side} side...`);
-      setProgress(80);
-
-      console.log('🔍 Calling AWS Textract...');
-      const ocrResult = await scanIDWithTextract(imageBase64);
-      console.log('✅ Textract response received:', ocrResult);
+    if (currentSide === 'front') {
+      // Store front image
+      setFrontImage(imageBase64);
       
-      setProgress(90);
-      setStatus('Validating extracted information...');
-      await delay(500);
-
-      setProgress(100);
-      setStatus(`${side.charAt(0).toUpperCase() + side.slice(1)} side scan complete!`);
-      
-      // Update scan progress
-      const updatedProgress: ScanProgress = {
-        ...scanProgress,
-        ...(side === 'front' 
-          ? { frontImage: imageBase64, frontData: ocrResult }
-          : { backImage: imageBase64, backData: ocrResult }
-        ),
-      };
-
-      setScanProgress(updatedProgress);
-
-      // Check if we need to scan the back
-      if (side === 'front' && requiresBackScan) {
-        console.log('✅ Front scan complete. Preparing for back scan...');
-        await delay(1000);
-        setStatus('Get ready to scan the BACK side');
+      if (requiresBackScan) {
+        // Show transition message, then switch to back capture
+        console.log('✅ Front captured. Preparing for back side...');
+        setStatus('Front side captured!');
         setCurrentStep('transition');
         await delay(2000);
         
-        // CRITICAL: Switch to back side and remount camera
-        console.log('🔄 Switching to back side, remounting camera...');
+        // Switch to back side
+        console.log('🔄 Switching to back side...');
         setCurrentSide('back');
-        setCameraKey(prev => prev + 1); // Force new camera instance
-        setShowCamera(true); // Show camera again
-        setCurrentStep('capture');
-        setCapturedImage(null);
-        setProgress(0);
-        setError(null);
+        setCameraKey(prev => prev + 1);
+        setShowCamera(true);
+        setCurrentStep('capture-back');
         setStatus('Position BACK side in frame');
-        
       } else {
-        // All scans complete
-        console.log('✅ All scans complete!');
-        setCurrentStep('complete');
-        await delay(500);
-
-        const completeResult: CompleteScanResultData = {
-          documentType,
-          frontImage: updatedProgress.frontImage!,
-          frontData: updatedProgress.frontData!,
-          backImage: updatedProgress.backImage,
-          backData: updatedProgress.backData,
-        };
-
-        console.log('📦 Sending complete result:', completeResult);
-        onComplete(completeResult);
+        // No back side required, process immediately
+        console.log('✅ Front captured. Processing with single API call...');
+        setCurrentStep('processing');
+        await processBothSides(imageBase64, null);
       }
+    } else {
+      // Store back image
+      setBackImage(imageBase64);
+      
+      // CHANGED: Now we have both images, make the SINGLE API call
+      console.log('✅ Both sides captured. Processing with single API call...');
+      setCurrentStep('processing');
+      await processBothSides(frontImage!, imageBase64);
+    }
+  };
+
+  /**
+   * CHANGED: New function to process BOTH sides with a SINGLE API call
+   * This is the key change - we send both images to Textract at once
+   * 
+   * @param frontImg - Base64 encoded front image
+   * @param backImg - Base64 encoded back image (optional)
+   */
+  const processBothSides = async (frontImg: string, backImg: string | null) => {
+    try {
+      setStatus('Processing both sides...');
+      setProgress(10);
+      await delay(300);
+
+      setStatus('Preparing images for processing...');
+      setProgress(20);
+      await delay(300);
+
+      // CHANGED: Prepare array of images
+      // If backImg is null, we only send the front image
+      const imagesToProcess = backImg ? [frontImg, backImg] : [frontImg];
+      
+      setStatus('Encoding image data...');
+      setProgress(30);
+      await delay(300);
+
+      setStatus(`Sending ${imagesToProcess.length} image(s) to AWS Textract...`);
+      setProgress(40);
+      await delay(300);
+
+      console.log(`🔍 Calling AWS Textract with ${imagesToProcess.length} image(s)...`);
+      
+      // CHANGED: SINGLE API CALL for both front and back
+      // This is the most important change - one call instead of two
+      const result: DualSideScanResult = await scanIDWithTextract(imagesToProcess);
+      
+      console.log('✅ Textract response received:', result);
+      
+      setProgress(70);
+      setStatus('Extracting data from front side...');
+      await delay(300);
+
+      if (backImg) {
+        setProgress(85);
+        setStatus('Extracting data from back side...');
+        await delay(300);
+      }
+
+      setProgress(95);
+      setStatus('Validating extracted information...');
+      await delay(300);
+
+      setProgress(100);
+      setStatus('Scan complete!');
+      await delay(500);
+
+      // CHANGED: Prepare complete result with data from both sides
+      const completeResult: CompleteScanResultData = {
+        documentType,
+        frontImage: frontImg,
+        frontData: result.frontData,
+        backImage: backImg || undefined,
+        backData: result.backData,
+      };
+
+      console.log('📦 Sending complete result:', completeResult);
+      console.log(`✅ Combined confidence: ${(result.combinedConfidence * 100).toFixed(1)}%`);
+      
+      setCurrentStep('complete');
+      await delay(500);
+      onComplete(completeResult);
 
     } catch (err) {
       const error = err as Error;
       setError(error.message);
       setStatus('Processing failed');
+      setProgress(0);
       console.error('❌ Processing error:', error);
     }
   };
@@ -152,46 +187,48 @@ export function ScanningScreen({
     console.error('❌ Camera error:', error);
   };
 
+  /**
+   * CHANGED: Retry logic now depends on which side failed
+   * If processing failed, we retry from the beginning
+   */
   const handleRetry = () => {
-    console.log(`🔄 Retrying ${currentSide} side scan...`);
-    setCameraKey(prev => prev + 1); // Force remount
+    console.log('🔄 Retrying scan...');
+    
+    // Reset everything
+    setFrontImage(null);
+    setBackImage(null);
+    setCurrentSide('front');
+    setCameraKey(prev => prev + 1);
     setShowCamera(true);
-    setCurrentStep('capture');
-    setCapturedImage(null);
+    setCurrentStep('capture-front');
     setProgress(0);
     setError(null);
-    setStatus(`Position ${currentSide.toUpperCase()} side in frame`);
+    setStatus('Position FRONT side in frame');
   };
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // Step 1: Show camera capture
-  if (currentStep === 'capture' && showCamera) {
+  // RENDER: Front side capture
+  if (currentStep === 'capture-front' && showCamera) {
     return (
       <div style={{ position: 'relative' }}>
-        {/* Side indicator banner */}
         <div style={{
           position: 'absolute',
           top: 0,
           left: 0,
           right: 0,
           zIndex: 1000,
-          backgroundColor: currentSide === 'front' ? '#3b82f6' : '#8b5cf6',
+          backgroundColor: '#3b82f6',
           padding: '16px',
           textAlign: 'center',
           color: 'white',
           fontWeight: 600,
           fontSize: '16px',
         }}>
-          {currentSide === 'front' ? '📄 Scan FRONT side of document' : '📄 Scan BACK side of document'}
-          {scanProgress.frontImage && currentSide === 'back' && (
-            <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
-              ✓ Front side completed
-            </div>
-          )}
+          📄 Scan FRONT side of document
         </div>
 
-        <div style={{ paddingTop: '60px' }} key={`camera-${currentSide}-${cameraKey}`}>
+        <div style={{ paddingTop: '60px' }} key={`camera-front-${cameraKey}`}>
           <CameraCapture
             onCapture={handleImageCapture}
             onCancel={onCancel}
@@ -202,7 +239,7 @@ export function ScanningScreen({
     );
   }
 
-  // Step 2: Show transition message
+  // RENDER: Transition message between front and back
   if (currentStep === 'transition') {
     return (
       <div style={{
@@ -219,22 +256,56 @@ export function ScanningScreen({
       }}>
         <div style={{
           padding: '24px 48px',
-          backgroundColor: '#8b5cf6',
+          backgroundColor: '#10b981',
           borderRadius: 'var(--radius-xl)',
           color: 'white',
           textAlign: 'center',
         }}>
           <CheckCircle size={48} color="white" style={{ marginBottom: '16px' }} />
-          <h2 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>Front Side Complete!</h2>
+          <h2 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>Front Side Captured!</h2>
           <p style={{ margin: 0, fontSize: '16px', opacity: 0.9 }}>
-            Preparing to scan back side...
+            Get ready to scan the back side...
           </p>
         </div>
       </div>
     );
   }
 
-  // Step 3 & 4: Show processing screen
+  // RENDER: Back side capture
+  if (currentStep === 'capture-back' && showCamera) {
+    return (
+      <div style={{ position: 'relative' }}>
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          backgroundColor: '#8b5cf6',
+          padding: '16px',
+          textAlign: 'center',
+          color: 'white',
+          fontWeight: 600,
+          fontSize: '16px',
+        }}>
+          📄 Scan BACK side of document
+          <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
+            ✓ Front side captured
+          </div>
+        </div>
+
+        <div style={{ paddingTop: '60px' }} key={`camera-back-${cameraKey}`}>
+          <CameraCapture
+            onCapture={handleImageCapture}
+            onCancel={onCancel}
+            onError={handleCameraError}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // RENDER: Processing screen (shown while making the single API call)
   return (
     <div style={{
       minHeight: '100vh',
@@ -246,12 +317,12 @@ export function ScanningScreen({
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background - Show captured image */}
-      {capturedImage && (
+      {/* Background - Show most recent captured image */}
+      {(backImage || frontImage) && (
         <div style={{
           position: 'absolute',
           inset: 0,
-          background: `url(${capturedImage})`,
+          background: `url(${backImage || frontImage})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           filter: 'blur(10px) brightness(0.3)',
@@ -280,84 +351,102 @@ export function ScanningScreen({
         position: 'relative',
         zIndex: 1,
       }}>
-        {/* Side indicator */}
+        {/* CHANGED: Status indicator shows we're processing both sides at once */}
         <div style={{
           padding: '12px 24px',
-          backgroundColor: currentSide === 'front' ? '#3b82f6' : '#8b5cf6',
+          backgroundColor: '#6366f1',
           borderRadius: 'var(--radius-lg)',
           color: 'white',
           fontWeight: 600,
           fontSize: '18px',
           textAlign: 'center',
         }}>
-          Processing {currentSide.toUpperCase()} side
-          {scanProgress.frontImage && currentSide === 'back' && (
+          Processing {backImage ? 'BOTH sides' : 'document'}
+          {backImage && (
             <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
-              ✓ Front side verified
+              ✓ Using single API call
             </div>
           )}
         </div>
 
+        {/* Document preview with dual-side indicator if both images exist */}
         <div style={{
           width: '100%',
           maxWidth: '400px',
-          aspectRatio: '1.586',
-          border: `3px solid ${currentSide === 'front' ? '#3b82f6' : '#8b5cf6'}`,
-          borderRadius: 'var(--radius-lg)',
           position: 'relative',
-          boxShadow: `0 0 40px ${currentSide === 'front' ? 'rgba(59, 130, 246, 0.6)' : 'rgba(139, 92, 246, 0.6)'}`,
-          overflow: 'hidden',
-          backgroundColor: '#1a1a1a',
         }}>
-
-          {capturedImage && (
-            <img 
-              src={capturedImage} 
-              alt={`Captured ID ${currentSide}`}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'contain',
-              }}
-            />
-          )}
-
-          <div
-            style={{
+          {/* Front image preview */}
+          <div style={{
+            aspectRatio: '1.586',
+            border: '3px solid #3b82f6',
+            borderRadius: 'var(--radius-lg)',
+            position: 'relative',
+            boxShadow: '0 0 40px rgba(59, 130, 246, 0.6)',
+            overflow: 'hidden',
+            backgroundColor: '#1a1a1a',
+            marginBottom: backImage ? '12px' : '0',
+          }}>
+            {frontImage && (
+              <img 
+                src={frontImage} 
+                alt="Captured ID front"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                }}
+              />
+            )}
+            <div style={{
               position: 'absolute',
-              left: 0,
-              right: 0,
-              height: '3px',
-              backgroundColor: currentSide === 'front' ? '#3b82f6' : '#8b5cf6',
-              boxShadow: `0 0 20px ${currentSide === 'front' ? 'rgba(59, 130, 246, 0.9)' : 'rgba(139, 92, 246, 0.9)'}`,
-              top: `${progress}%`,
-              transition: 'top 0.5s ease',
-            }}
-          />
+              top: '8px',
+              left: '8px',
+              padding: '4px 12px',
+              backgroundColor: 'rgba(59, 130, 246, 0.9)',
+              borderRadius: '4px',
+              color: 'white',
+              fontSize: '12px',
+              fontWeight: 600,
+            }}>
+              FRONT
+            </div>
+          </div>
 
-          {[
-            { top: '-2px', left: '-2px', borderTop: true, borderLeft: true },
-            { top: '-2px', right: '-2px', borderTop: true, borderRight: true },
-            { bottom: '-2px', left: '-2px', borderBottom: true, borderLeft: true },
-            { bottom: '-2px', right: '-2px', borderBottom: true, borderRight: true },
-          ].map((pos, i) => (
-            <div
-              key={i}
-              style={{
+          {/* Back image preview (if exists) */}
+          {backImage && (
+            <div style={{
+              aspectRatio: '1.586',
+              border: '3px solid #8b5cf6',
+              borderRadius: 'var(--radius-lg)',
+              position: 'relative',
+              boxShadow: '0 0 40px rgba(139, 92, 246, 0.6)',
+              overflow: 'hidden',
+              backgroundColor: '#1a1a1a',
+            }}>
+              <img 
+                src={backImage} 
+                alt="Captured ID back"
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                }}
+              />
+              <div style={{
                 position: 'absolute',
-                width: '28px',
-                height: '28px',
-                borderColor: 'white',
-                borderWidth: '3px',
-                borderStyle: 'solid',
-                borderTop: pos.borderTop ? undefined : 'none',
-                borderRight: pos.borderRight ? undefined : 'none',
-                borderBottom: pos.borderBottom ? undefined : 'none',
-                borderLeft: pos.borderLeft ? undefined : 'none',
-                ...pos,
-              }}
-            />
-          ))}
+                top: '8px',
+                left: '8px',
+                padding: '4px 12px',
+                backgroundColor: 'rgba(139, 92, 246, 0.9)',
+                borderRadius: '4px',
+                color: 'white',
+                fontSize: '12px',
+                fontWeight: 600,
+              }}>
+                BACK
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{
@@ -410,9 +499,9 @@ export function ScanningScreen({
             <div style={{
               width: `${progress}%`,
               height: '100%',
-              backgroundColor: error ? '#ef4444' : (currentSide === 'front' ? '#3b82f6' : '#8b5cf6'),
+              backgroundColor: error ? '#ef4444' : '#6366f1',
               transition: 'width 0.5s ease',
-              boxShadow: error ? '0 0 10px rgba(239, 68, 68, 0.8)' : `0 0 10px ${currentSide === 'front' ? 'rgba(59, 130, 246, 0.8)' : 'rgba(139, 92, 246, 0.8)'}`,
+              boxShadow: error ? '0 0 10px rgba(239, 68, 68, 0.8)' : '0 0 10px rgba(99, 102, 241, 0.8)',
             }} />
           </div>
 
@@ -430,11 +519,11 @@ export function ScanningScreen({
               icon={<RotateCcw size={18} />}
               onClick={handleRetry}
             >
-              Retry {currentSide} side
+              Retry scan
             </Button>
           )}
 
-          {!error && requiresBackScan && (
+          {!error && (
             <div style={{
               padding: 'var(--spacing-md)',
               backgroundColor: 'rgba(255, 255, 255, 0.1)',
@@ -447,9 +536,9 @@ export function ScanningScreen({
                 fontSize: '13px',
                 textAlign: 'center',
               }}>
-                {scanProgress.frontImage 
-                  ? '📋 Preparing to scan back side...' 
-                  : '🔒 All processing happens securely on your device'
+                {backImage 
+                  ? '⚡ Processing both sides in a single API call' 
+                  : '🔒 All processing happens securely'
                 }
               </p>
             </div>

@@ -1,20 +1,6 @@
 
 // src>service>textractService.ts
-/**
- * AWS Textract Service Integration
- * 
- * This module provides client-side integration with AWS Textract AnalyzeID API.
- * 
- * SECURITY WARNING: This implementation exposes AWS credentials in the browser.
- * This is acceptable for development/demo purposes but NOT recommended for production.
- * 
- * For production, use:
- * - AWS Cognito Identity Pools for temporary credentials
- * - Backend proxy server to handle AWS requests
- * - API Gateway with Lambda functions
- */
 
-// AWS Configuration
 interface AWSConfig {
   region: string;
   service: string;
@@ -71,11 +57,12 @@ export interface IDScanResult {
   rawResponse?: any; // Store raw Textract response
 }
 
-/**
- * AWS Signature V4 Helper Functions
- */
+export interface DualSideScanResult {
+  frontData: IDScanResult;
+  backData?: IDScanResult;
+  combinedConfidence: number;
+}
 
-// Simple SHA256 hash implementation
 async function sha256(message: string): Promise<string> {
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
@@ -194,16 +181,14 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
 /**
  * Parse Textract AnalyzeID response
  */
-function parseTextractResponse(response: any): IDScanResult {
-  const fields = response.IdentityDocuments?.[0]?.IdentityDocumentFields || [];
-
+function parseDocumentFields(documentFields: any[]): IDScanResult {
   const getFieldValue = (fieldType: string): string => {
-    const field = fields.find((f: any) => f.Type?.Text === fieldType);
+    const field = documentFields.find((f: any) => f.Type?.Text === fieldType);
     return field?.ValueDetection?.Text || '';
   };
 
-  // Calculate average confidence
-  const confidences = fields
+  // Calculate average confidence for this document
+  const confidences = documentFields
     .map((f: any) => f.ValueDetection?.Confidence || 0)
     .filter((c: number) => c > 0);
   const avgConfidence =
@@ -266,7 +251,61 @@ function parseTextractResponse(response: any): IDScanResult {
     
     // Metadata
     confidence: avgConfidence / 100, // Convert to 0-1 scale
-    rawResponse: response,
+  };
+}
+
+function parseTextractResponse(response: any): DualSideScanResult {
+  const identityDocuments = response.IdentityDocuments || [];
+  
+  // Textract returns documents in the same order they were sent
+  // So: documents[0] = front, documents[1] = back (if exists)
+  const frontDocument = identityDocuments[0];
+  const backDocument = identityDocuments[1];
+
+  // Parse front side (always required)
+  const frontData: IDScanResult = frontDocument 
+    ? {
+        ...parseDocumentFields(frontDocument.IdentityDocumentFields || []),
+        rawResponse: frontDocument
+      }
+    : {
+        // Fallback empty result if no front document found
+        firstName: '',
+        lastName: '',
+        fullName: '',
+        dateOfBirth: '',
+        idNumber: '',
+        idType: '',
+        issueDate: '',
+        expirationDate: '',
+        address: '',
+        city: '',
+        state: '',
+        stateName: '',
+        zipCode: '',
+        confidence: 0,
+      };
+
+  // Parse back side (optional)
+  let backData: IDScanResult | undefined;
+  if (backDocument) {
+    backData = {
+      ...parseDocumentFields(backDocument.IdentityDocumentFields || []),
+      rawResponse: backDocument
+    };
+  }
+
+  // Calculate combined confidence from both documents
+  const confidences = [frontData.confidence];
+  if (backData) {
+    confidences.push(backData.confidence);
+  }
+  const combinedConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length;
+
+  return {
+    frontData,
+    backData,
+    combinedConfidence,
   };
 }
 
@@ -276,7 +315,12 @@ function parseTextractResponse(response: any): IDScanResult {
  * @param imageBase64 - Base64 encoded image (with or without data URL prefix)
  * @returns Parsed ID scan result
  */
-export async function scanIDWithTextract(imageBase64: string): Promise<IDScanResult> {
+export async function scanIDWithTextract(images: string[]): Promise<DualSideScanResult> {
+  // Validate input
+  if (!images || images.length === 0) {
+    throw new Error('At least one image is required');
+  }
+
   // Validate AWS configuration
   if (!AWS_CONFIG.secretAccessKey) {
     throw new Error(
@@ -285,26 +329,31 @@ export async function scanIDWithTextract(imageBase64: string): Promise<IDScanRes
   }
 
   try {
-    // Remove data URL prefix if present
-    const base64Data = imageBase64.includes('base64,')
-      ? imageBase64.split('base64,')[1]
-      : imageBase64;
+    // CHANGED: Process all images into DocumentPages array
+    // This is the key change - we're now sending multiple pages in one request
+    const documentPages = images.map(imageBase64 => {
+      // Remove data URL prefix if present
+      const base64Data = imageBase64.includes('base64,')
+        ? imageBase64.split('base64,')[1]
+        : imageBase64;
+      
+      return {
+        Bytes: base64Data,
+      };
+    });
 
-    // Prepare request body
+    // CHANGED: Request body now contains multiple DocumentPages
+    // AWS Textract will process all pages in a single request
     const requestBody = JSON.stringify({
-      DocumentPages: [
-        {
-          Bytes: base64Data,
-        },
-      ],
+      DocumentPages: documentPages,
     });
 
     // Generate AWS Signature V4 headers
     const headers = await generateAWSHeaders(requestBody);
 
-    console.log('Calling AWS Textract...');
+    console.log(`📤 Calling AWS Textract with ${images.length} image(s)...`);
     
-    // Make API call
+    // Make API call (ONLY ONE CALL for both front and back)
     const response = await fetch(AWS_CONFIG.endpoint, {
       method: 'POST',
       headers,
@@ -318,19 +367,20 @@ export async function scanIDWithTextract(imageBase64: string): Promise<IDScanRes
     }
 
     const textractResponse = await response.json();
-    console.log('Textract response:', textractResponse);
+    console.log('✅ Textract response received for all pages:', textractResponse);
 
-    // Parse and return result
     return parseTextractResponse(textractResponse);
   } catch (error) {
-    console.error('Error calling AWS Textract:', error);
+    console.error('❌ Error calling AWS Textract:', error);
     throw error;
   }
 }
 
-/**
- * Check if AWS Textract is properly configured
- */
+export async function scanSingleIDWithTextract(imageBase64: string): Promise<IDScanResult> {
+  const result = await scanIDWithTextract([imageBase64]);
+  return result.frontData;
+}
+
 export function isTextractConfigured(): boolean {
   return (
     AWS_CONFIG.secretAccessKey.length > 0 &&
@@ -338,9 +388,6 @@ export function isTextractConfigured(): boolean {
   );
 }
 
-/**
- * Update AWS configuration (useful for runtime configuration)
- */
 export function configureTextract(config: Partial<AWSConfig>): void {
   Object.assign(AWS_CONFIG, config);
 }
