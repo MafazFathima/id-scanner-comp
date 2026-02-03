@@ -36,7 +36,7 @@ export interface IDScanResult {
   restrictions?: string;
   endorsements?: string;
   height?: string;
-  dd?: string;           // Document Discriminator
+  dd?: string;          
   rev?: string;
   eyeColor?: string;
   confidence: number;
@@ -151,13 +151,11 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
 }
 
 function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanResult {
-  // Enhanced logging: Show all detected fields
   console.log('📋 All detected fields from Textract:');
   documentFields.forEach((field, index) => {
     console.log(`  [${index}] Type: "${field.Type?.Text || 'N/A'}" | Value: "${field.ValueDetection?.Text || 'N/A'}" | Confidence: ${field.ValueDetection?.Confidence || 0}%`);
   });
 
-  // Extract all raw text from blocks for fallback detection
   let allRawText = '';
   if (rawBlocks) {
     const textBlocks = rawBlocks.filter((block: any) => 
@@ -167,12 +165,9 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     console.log('📝 All raw OCR text:', allRawText);
   }
 
-  // Enhanced field getter with alternative names
   const getFieldValue = (fieldType: string, alternativeTypes: string[] = []): string => {
-    // Try primary field type first
     let field = documentFields.find((f: any) => f.Type?.Text === fieldType);
     
-    // Try alternatives if primary not found
     if (!field && alternativeTypes.length > 0) {
       for (const altType of alternativeTypes) {
         field = documentFields.find((f: any) => f.Type?.Text === altType);
@@ -221,14 +216,11 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     zipCode
   ].filter(Boolean).join(', ');
 
-  // Enhanced detection for commonly missing fields
   let sex = getFieldValue('SEX', ['GENDER', 'M/F', 'S']);
   let height = getFieldValue('HEIGHT', ['HGT', 'HT']);
   let eyeColor = getFieldValue('EYE_COLOR', ['EYES', 'EYE', 'EYES_COLOR']);
 
-  // FALLBACK: Try to extract from raw text if structured fields not found
   if (!sex && allRawText) {
-    // Look for SEX: M or SEX: F or just M/F patterns
     const sexMatch = allRawText.match(/\b(?:SEX|GENDER|S)[:\s]*([MF])\b/i);
     if (sexMatch) {
       sex = sexMatch[1].toUpperCase();
@@ -237,11 +229,6 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
   }
 
   if (!height && allRawText) {
-    // Look for height in format: Hgt 5'-05" or HGT 5-11 or HEIGHT 5'11"
-    // const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)\s+(\d['\-]\d{2}"?)/i);
-    // if (heightMatch) {
-    //   height = heightMatch[1];
-    //   console.log(`🔍 FALLBACK: Found HEIGHT from raw text: "${height}"`);
     const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)[:\s]+(\d+['\s-]*\d+["']?)/i);
     if (heightMatch) {
       height = heightMatch[1].trim();
@@ -250,7 +237,6 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
   }
 
   if (!eyeColor && allRawText) {
-    // Look for EYES: BRO or EYE: BLU etc
     const eyeMatch = allRawText.match(/\b(?:EYES?|EYE_COLOR)[:\s]*([A-Z]{3})\b/i);
     if (eyeMatch) {
       eyeColor = eyeMatch[1].toUpperCase();
@@ -266,8 +252,6 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     }
   }
 
-  // ✨ NEW: Extract REV (Revision Date) from raw text
-  // Matches patterns like: REV 10 10/2016 or REV 10/10/2016
   let rev: string | undefined;
   if (allRawText) {
     const revMatch = allRawText.match(/\bREV\s+(\d{2}\s+\d{2}\/\d{4}|\d{2}\/\d{2}\/\d{4})/i);
@@ -281,9 +265,9 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
 
   if (idType) {
     idType = idType
-      .replace(/\s+FRONT$/i, '')   // Remove " FRONT" at the end
-      .replace(/\s+BACK$/i, '')    // Remove " BACK" at the end
-      .trim();                     // Remove extra whitespace
+      .replace(/\s+FRONT$/i, '')   
+      .replace(/\s+BACK$/i, '')    
+      .trim();                     
   }
 
   const result: IDScanResult = {
@@ -359,9 +343,9 @@ function parseTextractResponse(response: any): DualSideScanResult {
         state: '',
         stateName: '',
         zipCode: '',
-        height: undefined,          // ✨ ADDED
-        eyeColor: undefined,        // ✨ ADDED
-        dd: undefined,              // ✨ ADDED
+        height: undefined,         
+        eyeColor: undefined,        
+        dd: undefined,              
         rev: undefined,  
         confidence: 0,
       };

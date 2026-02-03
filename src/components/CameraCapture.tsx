@@ -106,31 +106,17 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       });
     }
     
-    // Clear the video element completely
     if (videoRef.current) {
       console.log('🛑 Clearing video element...');
       const videoElement = videoRef.current;
-      
-      // Pause the video
       videoElement.pause();
-      
-      // Remove the source
       videoElement.srcObject = null;
-      
-      // Clear src attribute as well
       videoElement.src = '';
-      
-      // Remove all event listeners
       videoElement.onloadedmetadata = null;
       videoElement.onloadeddata = null;
-      
-      // Force a load to clear any buffered data
       videoElement.load();
-      
       console.log('✅ Video element cleared');
     }
-    
-    // Clear state
     setStream(null);
     setIsReady(false);
     
@@ -145,26 +131,14 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     const context = canvas.getContext('2d');
 
     if (!context) return;
-
-    // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
-    // Draw video frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // Convert to base64
     const base64Image = canvas.toDataURL('image/jpeg', 0.95);
-
     console.log('📸 Image captured, stopping camera immediately...');
     console.log('📸 FULL Base64 Image:\n', base64Image);
-
     setIsCaptured(true);
-    
-    // Stop camera IMMEDIATELY - don't wait
     stopCamera();
-    
-    // Then call onCapture after a small delay to ensure cleanup is done
     setTimeout(() => {
       onCapture(base64Image);
     }, 200);
@@ -211,7 +185,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       </div>
     );
   }
-
   return (
     <div style={{
       height: '100vh',
@@ -225,7 +198,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       left: 0,
       overflow: 'hidden',
     }}>
-
       <video
         ref={videoRef}
         autoPlay
@@ -242,21 +214,16 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       />
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-
-      {/* ✅ MODIFIED: Changed from flexbox to absolute positioning for better control */}
       <div style={{
         position: 'absolute',
         inset: 0,
         background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 30%, rgba(0,0,0,0.3) 70%, rgba(0,0,0,0.6) 100%)',
         display: 'flex',
         flexDirection: 'column',
-        // ✅ MODIFIED: Use viewport-based padding for consistent spacing across devices
         padding: 'clamp(16px, 4vw, 24px)', // Responsive horizontal padding
         paddingTop: 'clamp(106px, 12vh, 120px)', // Responsive top padding - keeps header near top
         paddingBottom: 'max(20px, env(safe-area-inset-bottom))', // Handle notches/safe areas
       }}>
-
-        {/* ✅ MODIFIED: Fixed header section with minimal bottom spacing */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -290,8 +257,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
             <X size={24} color="white" />
           </button>
         </div>
-
-        {/* ✅ MODIFIED: Frame container positioned closer to header */}
         <div style={{
           display: 'flex',
           alignItems: 'flex-start', // Align to top instead of center
@@ -299,7 +264,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
           flex: 1, // Takes up all available space between header and footer
           // paddingTop: 'clamp(8px, 2vh, 16px)', // Small top padding for spacing from header
         }}>
-          {/* ✅ MODIFIED: Responsive frame with padding to maintain aspect ratio */}
           <div style={{
             width: 'min(85vw, 400px)', // Responsive width: 85% of viewport or 400px max
             aspectRatio: '1.586', // ID card aspect ratio (credit card size)
@@ -308,7 +272,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
             position: 'relative',
             boxShadow: '0 0 40px rgba(16, 185, 129, 0.6)',
           }}>
-            {/* Corner markers */}
             {[
               { top: '-3px', left: '-3px', borderTop: true, borderLeft: true },
               { top: '-3px', right: '-3px', borderTop: true, borderRight: true },
@@ -335,7 +298,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
           </div>
         </div>
 
-        {/* ✅ MODIFIED: Footer section with responsive spacing */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',

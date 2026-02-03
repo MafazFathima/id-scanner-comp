@@ -1,13 +1,4 @@
-/**
- * Universal ID Scanner SDK Types
- * Complete type definitions for SDK configuration
- */
-
 import React from 'react';
-
-// ============================================================================
-// DOCUMENT TYPES & TWO-SIDED SCANNING (NEW)
-// ============================================================================
 
 export type DocumentType = 
   | 'drivers-license'
@@ -76,10 +67,6 @@ export interface CompleteScanResult {
   confidence: number;
 }
 
-// ============================================================================
-// THEME CONFIGURATION (EXISTING)
-// ============================================================================
-
 export interface SDKTheme {
   colors?: {
     primary?: string;
@@ -143,19 +130,11 @@ export interface SDKTheme {
   };
 }
 
-// ============================================================================
-// SDK CONFIGURATION (EXTENDED)
-// ============================================================================
-
 export interface SDKConfig {
-  // Theme configuration
   theme?: SDKTheme;
-  
-  // Branding
   appName?: string;
   logo?: string | React.ReactNode;
   
-  // Feature flags (EXTENDED with two-sided scanning)
   features?: {
     showWelcome?: boolean;
     enableHistory?: boolean;
@@ -163,10 +142,9 @@ export interface SDKConfig {
     enableCamera?: boolean;
     enableExport?: boolean;
     enableShare?: boolean;
-    requireBackScan?: boolean; // NEW: Enable/disable two-sided scanning
+    requireBackScan?: boolean;
   };
   
-  // Behavior configuration
   behavior?: {
     autoDeleteAfterDays?: number;
     maxScansStored?: number;
@@ -174,19 +152,15 @@ export interface SDKConfig {
     processingTimeout?: number;
   };
   
-  // Supported document types
   documentTypes?: Array<{
     id: string;
     name: string;
     icon?: React.ReactNode;
     enabled: boolean;
   }>;
-  
-  // Localization
   locale?: string;
   translations?: Record<string, Record<string, string>>;
   
-  // Privacy & Compliance
   privacy?: {
     showPrivacyNotice?: boolean;
     privacyPolicyUrl?: string;
@@ -195,45 +169,28 @@ export interface SDKConfig {
   };
 }
 
-// ============================================================================
-// SDK CALLBACKS (EXTENDED)
-// ============================================================================
-
 export interface SDKCallbacks {
-  // Scan lifecycle
   onScanStart?: () => void;
   onScanProgress?: (progress: number, status: string) => void;
   onScanComplete?: (data: ScanResult | CompleteScanResult) => void; // EXTENDED: Can now receive CompleteScanResult
   onScanError?: (error: ScanError) => void;
   onScanCancel?: () => void;
-  
-  // User actions
   onExport?: (data: ScanResult, format: 'json' | 'csv' | 'pdf') => void;
   onShare?: (data: ScanResult) => void;
   onCopy?: (data: ScanResult) => void;
   onDelete?: (scanId: string) => void;
-  
-  // Navigation
   onNavigate?: (screen: SDKScreen) => void;
   onClose?: () => void;
 }
 
-// ============================================================================
-// SCREEN TYPES (EXTENDED)
-// ============================================================================
-
 export type SDKScreen = 
   | 'welcome' 
   | 'scan' 
-  | 'document-selection' // NEW: Added for two-sided scanning
+  | 'document-selection'
   | 'scanning' 
   | 'results' 
   | 'error' 
   | 'history';
-
-// ============================================================================
-// SCAN RESULT (EXTENDED)
-// ============================================================================
 
 export interface ScanResult {
   id: string;
@@ -255,14 +212,10 @@ export interface ScanResult {
     imageQuality: number;
     documentCountry?: string;
     documentState?: string;
-    hasFrontScan?: boolean; // NEW: Track if front was scanned
-    hasBackScan?: boolean;  // NEW: Track if back was scanned
+    hasFrontScan?: boolean; 
+    hasBackScan?: boolean;  
   };
 }
-
-// ============================================================================
-// ERROR TYPES (EXISTING)
-// ============================================================================
 
 export interface ScanError {
   code: 'scan-failed' | 'no-id-detected' | 'poor-quality' | 'timeout' | 'unsupported-document';
@@ -270,32 +223,19 @@ export interface ScanError {
   details?: any;
 }
 
-// ============================================================================
-// SDK INSTANCE (EXISTING)
-// ============================================================================
-
 export interface SDKInstance {
-  // Navigation methods
   navigate: (screen: SDKScreen) => void;
   goBack: () => void;
   close: () => void;
-  
-  // Scan methods
   startScan: () => Promise<ScanResult>;
   cancelScan: () => void;
   uploadImage: (file: File) => Promise<ScanResult>;
-  
-  // History methods
   getHistory: () => ScanResult[];
   getScan: (id: string) => ScanResult | null;
   deleteScan: (id: string) => void;
   clearHistory: () => void;
-  
-  // Configuration methods
   updateConfig: (config: Partial<SDKConfig>) => void;
   updateTheme: (theme: Partial<SDKTheme>) => void;
-  
-  // State
   getCurrentScreen: () => SDKScreen;
   isScanning: () => boolean;
 }
