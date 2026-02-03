@@ -59,7 +59,7 @@ function ScanScreenMobile({
         display: "flex",
         flexDirection: "column",
         overflowX: "hidden",
-        paddingBottom: "20px",
+        // paddingBottom: "20px",
       }}
     >
       <div
@@ -78,8 +78,12 @@ function ScanScreenMobile({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          paddingTop: "var(--spacing-sm)",
-          padding: "var(--spacing-lg)",
+          // paddingTop: "var(--spacing-xs)"!,
+          // padding: "var(--spacing-lg)",
+           paddingTop: "var(--spacing-xs)",   // 👈 top
+    paddingLeft: "var(--spacing-lg)",
+    paddingRight: "var(--spacing-lg)",
+    // paddingBottom: "var(--spacing-sm)",
           gap: "var(--spacing-lg)",
           overflowY: "auto",
           overflowX: "hidden",

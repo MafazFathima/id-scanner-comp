@@ -17,12 +17,28 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Prevent scrolling when camera is active
+    const originalOverflow = document.body.style.overflow;
+    const originalPosition = document.body.style.position;
+    const originalHeight = document.body.style.height;
+    
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.height = '100vh';
+    document.body.style.width = '100vw';
+    
     startCamera();
     
     // Cleanup function - runs when component unmounts
     return () => {
       console.log('🔴 CameraCapture: Cleaning up camera...');
       stopCamera();
+      
+      // Restore original body styles
+      document.body.style.overflow = originalOverflow;
+      document.body.style.position = originalPosition;
+      document.body.style.height = originalHeight;
+      document.body.style.width = '';
     };
   }, []);
 
@@ -141,7 +157,7 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     const base64Image = canvas.toDataURL('image/jpeg', 0.95);
 
     console.log('📸 Image captured, stopping camera immediately...');
-console.log('📸 FULL Base64 Image:\n', base64Image);
+    console.log('📸 FULL Base64 Image:\n', base64Image);
 
     setIsCaptured(true);
     
@@ -153,62 +169,6 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
       onCapture(base64Image);
     }, 200);
   };
-
-//   const stopCamera = () => {
-//     if (stream) {
-//       console.log('🛑 Stopping camera stream...');
-//       stream.getTracks().forEach(track => {
-//         console.log(`🛑 Stopping track: ${track.kind}, readyState: ${track.readyState}`);
-//         track.stop();
-//         console.log(`✅ Track stopped: ${track.kind}, readyState: ${track.readyState}`);
-//       });
-      
-//       // Clear the video element
-//       if (videoRef.current) {
-//         videoRef.current.srcObject = null;
-//         videoRef.current.pause();
-//         // Remove all event listeners
-//         videoRef.current.onloadedmetadata = null;
-//       }
-      
-//       setStream(null);
-//       setIsReady(false);
-//       console.log('✅ Camera stopped completely');
-//     } else {
-//       console.log('ℹ️ No stream to stop');
-//     }
-//   };
-
-//   const captureImage = () => {
-//     if (!videoRef.current || !canvasRef.current) return;
-
-//     const video = videoRef.current;
-//     const canvas = canvasRef.current;
-//     const context = canvas.getContext('2d');
-
-//     if (!context) return;
-
-//     // Set canvas dimensions to match video
-//     canvas.width = video.videoWidth;
-//     canvas.height = video.videoHeight;
-
-//     // Draw video frame to canvas
-//     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-//     // Convert to base64
-//     const base64Image = canvas.toDataURL('image/jpeg', 0.95);
-
-//     setIsCaptured(true);
-    
-//     // Stop camera immediately after capture
-//     console.log('📸 Image captured, stopping camera...');
-    
-//     // Stop the stream before calling onCapture
-//     setTimeout(() => {
-//       stopCamera();
-//       onCapture(base64Image);
-//     }, 100);
-//   };
 
   const handleCancel = () => {
     console.log('❌ User cancelled, stopping camera...');
@@ -254,16 +214,16 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
 
   return (
     <div style={{
-    minHeight: '100vh',     
-  width: '100%',         
-  maxWidth: '100%',
-  backgroundColor: '#000',
-  display: 'flex',
-  flexDirection: 'column',
-  position: 'relative',
-  overflowX: 'hidden',
-  overflowY: 'auto',    
-  paddingBottom: '80px',  
+      height: '100vh',
+      width: '100vw',
+      maxWidth: '100%',
+      backgroundColor: '#000',
+      display: 'flex',
+      flexDirection: 'column',
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      overflow: 'hidden',
     }}>
 
       <video
@@ -275,32 +235,40 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
           width: '100%',
           height: '100vh',
           objectFit: 'cover',
+          position: 'absolute',
+          top: 0,
+          left: 0,
         }}
       />
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
+      {/* ✅ MODIFIED: Changed from flexbox to absolute positioning for better control */}
       <div style={{
         position: 'absolute',
         inset: 0,
         background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 30%, rgba(0,0,0,0.3) 70%, rgba(0,0,0,0.6) 100%)',
         display: 'flex',
         flexDirection: 'column',
-        justifyContent: 'space-between',
-        padding: 'var(--spacing-lg)',
+        // ✅ MODIFIED: Use viewport-based padding for consistent spacing across devices
+        padding: 'clamp(16px, 4vw, 24px)', // Responsive horizontal padding
+        paddingTop: 'clamp(106px, 12vh, 120px)', // Responsive top padding - keeps header near top
+        paddingBottom: 'max(20px, env(safe-area-inset-bottom))', // Handle notches/safe areas
       }}>
 
+        {/* ✅ MODIFIED: Fixed header section with minimal bottom spacing */}
         <div style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          marginBottom: 'clamp(12px, 2.5vh, 20px)', // Reduced spacing below header
         }}>
           <div style={{
-            padding: '8px 16px',
+            padding: '8px 12px',
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
             borderRadius: 'var(--radius-md)',
             color: 'white',
-            fontSize: '14px',
+            fontSize: 'clamp(14px, 3.5vw, 16px)', // Responsive font size
             fontWeight: 600,
           }}>
             {isReady ? '📸 Camera Ready' : '⏳ Initializing...'}
@@ -311,8 +279,8 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '44px',
-              height: '44px',
+              width: '40px',
+              height: '40px',
               backgroundColor: 'rgba(0, 0, 0, 0.5)',
               border: 'none',
               borderRadius: '50%',
@@ -323,21 +291,24 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
           </button>
         </div>
 
+        {/* ✅ MODIFIED: Frame container positioned closer to header */}
         <div style={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start', // Align to top instead of center
           justifyContent: 'center',
-          flex: 1,
+          flex: 1, // Takes up all available space between header and footer
+          // paddingTop: 'clamp(8px, 2vh, 16px)', // Small top padding for spacing from header
         }}>
+          {/* ✅ MODIFIED: Responsive frame with padding to maintain aspect ratio */}
           <div style={{
-            width: '100%',
-            maxWidth: '400px',
-            aspectRatio: '1.586',
+            width: 'min(85vw, 400px)', // Responsive width: 85% of viewport or 400px max
+            aspectRatio: '1.586', // ID card aspect ratio (credit card size)
             border: '3px solid #10b981',
             borderRadius: 'var(--radius-lg)',
             position: 'relative',
             boxShadow: '0 0 40px rgba(16, 185, 129, 0.6)',
           }}>
+            {/* Corner markers */}
             {[
               { top: '-3px', left: '-3px', borderTop: true, borderLeft: true },
               { top: '-3px', right: '-3px', borderTop: true, borderRight: true },
@@ -348,8 +319,8 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
                 key={i}
                 style={{
                   position: 'absolute',
-                  width: '32px',
-                  height: '32px',
+                  width: 'clamp(24px, 6vw, 32px)', // Responsive corner size
+                  height: 'clamp(24px, 6vw, 32px)',
                   borderColor: 'white',
                   borderWidth: '4px',
                   borderStyle: 'solid',
@@ -364,25 +335,28 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
           </div>
         </div>
 
+        {/* ✅ MODIFIED: Footer section with responsive spacing */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 'var(--spacing-lg)',
-          marginBottom: '60px',
+          gap: 'clamp(12px, 3vh, 20px)', // Responsive gap
+          paddingTop: 'clamp(16px, 3vh, 24px)', // Space above footer
+          paddingBottom: 'max(60px, env(safe-area-inset-bottom))',
         }}>
           <div style={{
             textAlign: 'center',
             color: 'white',
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            padding: 'var(--spacing-md)',
+            // padding: '8px 16px',
             borderRadius: 'var(--radius-md)',
           }}>
-            <p style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>
+            <p style={{ 
+              margin: 0, 
+              fontSize: 'clamp(14px, 3.5vw, 16px)', // Responsive font
+              fontWeight: 600 
+            }}>
               Position ID within the frame
-            </p>
-            <p style={{ margin: '4px 0 0 0', fontSize: '14px', opacity: 0.9 }}>
-              Ensure all corners are visible
             </p>
           </div>
 
@@ -393,8 +367,8 @@ console.log('📸 FULL Base64 Image:\n', base64Image);
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: '80px',
-              height: '80px',
+              width: 'clamp(70px, 18vw, 80px)', // Responsive button size
+              height: 'clamp(70px, 18vw, 80px)',
               backgroundColor: isReady ? 'white' : 'rgba(255, 255, 255, 0.3)',
               border: '4px solid white',
               borderRadius: '50%',

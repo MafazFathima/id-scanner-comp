@@ -1,6 +1,4 @@
-
 // src>service>textractService.ts
-
 interface AWSConfig {
   region: string;
   service: string;
@@ -17,44 +15,30 @@ const AWS_CONFIG: AWSConfig = {
   endpoint: 'https://textract.us-east-1.amazonaws.com',
 };
 
-/**
- * Parsed ID data structure
- */
 export interface IDScanResult {
-  // Personal Information
   firstName: string;
   middleName?: string;
   lastName: string;
   suffix?: string;
   fullName: string;
   dateOfBirth: string;
-  sex?: string;
-  
-  // Document Information
+  sex?: string; 
   idNumber: string;
   idType: string;
   issueDate: string;
-  expirationDate: string;
-  
-  // Address Information
+  expirationDate: string; 
   address: string;
   city: string;
   state: string;
   stateName: string;
-  zipCode: string;
-  
-  // License-specific fields
+  zipCode: string; 
   class?: string;
   restrictions?: string;
   endorsements?: string;
-  
-  // Physical Description
   height?: string;
   eyeColor?: string;
-  
-  // Metadata
   confidence: number;
-  rawResponse?: any; // Store raw Textract response
+  rawResponse?: any; 
 }
 
 export interface DualSideScanResult {
@@ -70,7 +54,6 @@ async function sha256(message: string): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// HMAC SHA256
 async function hmacSha256(key: ArrayBuffer, message: string): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey(
     'raw',
@@ -83,7 +66,6 @@ async function hmacSha256(key: ArrayBuffer, message: string): Promise<ArrayBuffe
   return await crypto.subtle.sign('HMAC', cryptoKey, msgBuffer);
 }
 
-// Generate signing key
 async function getSignatureKey(
   key: string,
   dateStamp: string,
@@ -100,33 +82,25 @@ async function getSignatureKey(
   return kSigning;
 }
 
-// Convert ArrayBuffer to hex string
 function bufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
 
-/**
- * Generate AWS Signature V4 headers
- */
 async function generateAWSHeaders(requestBody: string): Promise<Record<string, string>> {
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
   const dateStamp = amzDate.slice(0, 8);
 
-  // Request parameters
   const method = 'POST';
   const canonicalUri = '/';
   const canonicalQuerystring = '';
   const host = `textract.${AWS_CONFIG.region}.amazonaws.com`;
   const amzTarget = 'Textract.AnalyzeID';
   const contentType = 'application/x-amz-json-1.1';
-
-  // Hash the request body
   const payloadHash = await sha256(requestBody);
 
-  // Create canonical headers
   const canonicalHeaders =
     `content-type:${contentType}\n` +
     `host:${host}\n` +
@@ -136,7 +110,6 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
 
   const signedHeaders = 'content-type;host;x-amz-content-sha256;x-amz-date;x-amz-target';
 
-  // Create canonical request
   const canonicalRequest =
     method + '\n' +
     canonicalUri + '\n' +
@@ -145,7 +118,6 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
     signedHeaders + '\n' +
     payloadHash;
 
-  // Create string to sign
   const algorithm = 'AWS4-HMAC-SHA256';
   const credentialScope = `${dateStamp}/${AWS_CONFIG.region}/${AWS_CONFIG.service}/aws4_request`;
   const stringToSign =
@@ -154,7 +126,6 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
     credentialScope + '\n' +
     await sha256(canonicalRequest);
 
-  // Calculate signature
   const signingKey = await getSignatureKey(
     AWS_CONFIG.secretAccessKey,
     dateStamp,
@@ -164,7 +135,6 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
   const signatureBuffer = await hmacSha256(signingKey, stringToSign);
   const signature = bufferToHex(signatureBuffer);
 
-  // Create authorization header
   const authorizationHeader =
     `${algorithm} Credential=${AWS_CONFIG.accessKeyId}/${credentialScope}, ` +
     `SignedHeaders=${signedHeaders}, Signature=${signature}`;
@@ -178,16 +148,50 @@ async function generateAWSHeaders(requestBody: string): Promise<Record<string, s
   };
 }
 
-/**
- * Parse Textract AnalyzeID response
- */
-function parseDocumentFields(documentFields: any[]): IDScanResult {
-  const getFieldValue = (fieldType: string): string => {
-    const field = documentFields.find((f: any) => f.Type?.Text === fieldType);
-    return field?.ValueDetection?.Text || '';
+function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanResult {
+  // Enhanced logging: Show all detected fields
+  console.log('📋 All detected fields from Textract:');
+  documentFields.forEach((field, index) => {
+    console.log(`  [${index}] Type: "${field.Type?.Text || 'N/A'}" | Value: "${field.ValueDetection?.Text || 'N/A'}" | Confidence: ${field.ValueDetection?.Confidence || 0}%`);
+  });
+
+  // Extract all raw text from blocks for fallback detection
+  let allRawText = '';
+  if (rawBlocks) {
+    const textBlocks = rawBlocks.filter((block: any) => 
+      block.BlockType === 'LINE' && block.Text
+    );
+    allRawText = textBlocks.map((block: any) => block.Text).join(' ');
+    console.log('📝 All raw OCR text:', allRawText);
+  }
+
+  // Enhanced field getter with alternative names
+  const getFieldValue = (fieldType: string, alternativeTypes: string[] = []): string => {
+    // Try primary field type first
+    let field = documentFields.find((f: any) => f.Type?.Text === fieldType);
+    
+    // Try alternatives if primary not found
+    if (!field && alternativeTypes.length > 0) {
+      for (const altType of alternativeTypes) {
+        field = documentFields.find((f: any) => f.Type?.Text === altType);
+        if (field) {
+          console.log(`✅ Found ${fieldType} using alternative name: ${altType}`);
+          break;
+        }
+      }
+    }
+    
+    const value = field?.ValueDetection?.Text || '';
+    
+    if (value) {
+      console.log(`🔍 ${fieldType}: "${value}" (confidence: ${field?.ValueDetection?.Confidence || 0}%)`);
+    } else {
+      console.log(`❌ ${fieldType}: NOT FOUND (tried: ${[fieldType, ...alternativeTypes].join(', ')})`);
+    }
+    
+    return value;
   };
 
-  // Calculate average confidence for this document
   const confidences = documentFields
     .map((f: any) => f.ValueDetection?.Confidence || 0)
     .filter((c: number) => c > 0);
@@ -196,20 +200,18 @@ function parseDocumentFields(documentFields: any[]): IDScanResult {
       ? confidences.reduce((a: number, b: number) => a + b, 0) / confidences.length
       : 0;
 
-  // Extract name fields
-  const firstName = getFieldValue('FIRST_NAME');
+  const firstName = getFieldValue('FIRST_NAME', ['GIVEN_NAME']);
   const middleName = getFieldValue('MIDDLE_NAME');
-  const lastName = getFieldValue('LAST_NAME');
-  const suffix = getFieldValue('SUFFIX');
+  const lastName = getFieldValue('LAST_NAME', ['FAMILY_NAME', 'SURNAME']);
+  const suffix = getFieldValue('SUFFIX', ['NAME_SUFFIX']);
   const fullName = [firstName, middleName, lastName, suffix]
     .filter(Boolean)
     .join(' ');
 
-  // Extract address fields
-  const streetAddress = getFieldValue('ADDRESS');
-  const city = getFieldValue('CITY_IN_ADDRESS');
-  const state = getFieldValue('STATE_IN_ADDRESS');
-  const zipCode = getFieldValue('ZIP_CODE_IN_ADDRESS');
+  const streetAddress = getFieldValue('ADDRESS', ['STREET_ADDRESS']);
+  const city = getFieldValue('CITY_IN_ADDRESS', ['CITY']);
+  const state = getFieldValue('STATE_IN_ADDRESS', ['STATE_CODE', 'STATE']);
+  const zipCode = getFieldValue('ZIP_CODE_IN_ADDRESS', ['ZIP_CODE', 'POSTAL_CODE']);
   const fullAddress = [
     streetAddress,
     city,
@@ -217,59 +219,104 @@ function parseDocumentFields(documentFields: any[]): IDScanResult {
     zipCode
   ].filter(Boolean).join(', ');
 
-  return {
-    // Personal Information
+  // Enhanced detection for commonly missing fields
+  let sex = getFieldValue('SEX', ['GENDER', 'M/F', 'S']);
+  let height = getFieldValue('HEIGHT', ['HGT', 'HT']);
+  let eyeColor = getFieldValue('EYE_COLOR', ['EYES', 'EYE', 'EYES_COLOR']);
+
+  // FALLBACK: Try to extract from raw text if structured fields not found
+  if (!sex && allRawText) {
+    // Look for SEX: M or SEX: F or just M/F patterns
+    const sexMatch = allRawText.match(/\b(?:SEX|GENDER|S)[:\s]*([MF])\b/i);
+    if (sexMatch) {
+      sex = sexMatch[1].toUpperCase();
+      console.log(`🔍 FALLBACK: Found SEX from raw text: "${sex}"`);
+    }
+  }
+
+  if (!height && allRawText) {
+    // Look for height in format: Hgt 5'-05" or HGT 5-11 or HEIGHT 5'11"
+    const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)\s+(\d['\-]\d{2}"?)/i);
+    if (heightMatch) {
+      height = heightMatch[1];
+      console.log(`🔍 FALLBACK: Found HEIGHT from raw text: "${height}"`);
+    }
+  }
+
+  if (!eyeColor && allRawText) {
+    // Look for EYES: BRO or EYE: BLU etc
+    const eyeMatch = allRawText.match(/\b(?:EYES?|EYE_COLOR)[:\s]*([A-Z]{3})\b/i);
+    if (eyeMatch) {
+      eyeColor = eyeMatch[1].toUpperCase();
+      console.log(`🔍 FALLBACK: Found EYE_COLOR from raw text: "${eyeColor}"`);
+    }
+  }
+
+  let idType = getFieldValue('ID_TYPE', ['DOCUMENT_TYPE']);
+
+  if (idType) {
+    idType = idType
+      .replace(/\s+FRONT$/i, '')   // Remove " FRONT" at the end
+      .replace(/\s+BACK$/i, '')    // Remove " BACK" at the end
+      .trim();                     // Remove extra whitespace
+  }
+
+  const result: IDScanResult = {
     firstName,
     middleName: middleName || undefined,
     lastName,
     suffix: suffix || undefined,
     fullName,
-    dateOfBirth: getFieldValue('DATE_OF_BIRTH'),
-    sex: getFieldValue('SEX') || undefined,
-    
-    // Document Information
-    idNumber: getFieldValue('DOCUMENT_NUMBER'),
-    idType: getFieldValue('ID_TYPE'),
-    issueDate: getFieldValue('DATE_OF_ISSUE'),
-    expirationDate: getFieldValue('EXPIRATION_DATE'),
-    
-    // Address Information
+    dateOfBirth: getFieldValue('DATE_OF_BIRTH', ['DOB', 'BIRTH_DATE']),
+    sex: sex || undefined,
+    idNumber: getFieldValue('DOCUMENT_NUMBER', ['ID_NUMBER', 'DL_NUMBER', 'LICENSE_NUMBER']),
+    idType,
+    issueDate: getFieldValue('DATE_OF_ISSUE', ['ISSUE_DATE', 'ISS']),
+    expirationDate: getFieldValue('EXPIRATION_DATE', ['EXP', 'EXP_DATE']),
     address: fullAddress,
     city,
     state,
-    stateName: getFieldValue('STATE_NAME'),
+    stateName: getFieldValue('STATE_NAME', ['STATE_FULL_NAME']),
     zipCode,
-    
-    // License-specific
-    class: getFieldValue('CLASS') || undefined,
-    restrictions: getFieldValue('RESTRICTIONS') || undefined,
-    endorsements: getFieldValue('ENDORSEMENTS') || undefined,
-    
-    // Physical Description
-    height: getFieldValue('HEIGHT') || undefined,
-    eyeColor: getFieldValue('EYE_COLOR') || undefined,
-    
-    // Metadata
-    confidence: avgConfidence / 100, // Convert to 0-1 scale
+    class: getFieldValue('CLASS', ['LICENSE_CLASS', 'DL_CLASS']) || undefined,
+    restrictions: getFieldValue('RESTRICTIONS', ['RSTR']) || undefined,
+    endorsements: getFieldValue('ENDORSEMENTS', ['END', 'ENDORSE']) || undefined,
+    height: height || undefined,
+    eyeColor: eyeColor || undefined,
+    confidence: avgConfidence / 100,
   };
+
+  console.log('📊 Final parsed result:', {
+    name: result.fullName,
+    dob: result.dateOfBirth,
+    sex: result.sex || 'NOT DETECTED',
+    height: result.height || 'NOT DETECTED',
+    eyeColor: result.eyeColor || 'NOT DETECTED',
+    confidence: `${(result.confidence * 100).toFixed(1)}%`
+  });
+
+  return result;
 }
 
 function parseTextractResponse(response: any): DualSideScanResult {
-  const identityDocuments = response.IdentityDocuments || [];
+  console.log('🔍 Parsing Textract response...');
   
-  // Textract returns documents in the same order they were sent
-  // So: documents[0] = front, documents[1] = back (if exists)
+  const identityDocuments = response.IdentityDocuments || [];
+  console.log(`📄 Found ${identityDocuments.length} identity document(s)`);
+  
   const frontDocument = identityDocuments[0];
   const backDocument = identityDocuments[1];
 
-  // Parse front side (always required)
+  console.log('\n========== FRONT SIDE ==========');
   const frontData: IDScanResult = frontDocument 
     ? {
-        ...parseDocumentFields(frontDocument.IdentityDocumentFields || []),
+        ...parseDocumentFields(
+          frontDocument.IdentityDocumentFields || [], 
+          frontDocument.Blocks || []
+        ),
         rawResponse: frontDocument
       }
     : {
-        // Fallback empty result if no front document found
         firstName: '',
         lastName: '',
         fullName: '',
@@ -286,21 +333,33 @@ function parseTextractResponse(response: any): DualSideScanResult {
         confidence: 0,
       };
 
-  // Parse back side (optional)
   let backData: IDScanResult | undefined;
   if (backDocument) {
+    console.log('\n========== BACK SIDE ==========');
     backData = {
-      ...parseDocumentFields(backDocument.IdentityDocumentFields || []),
+      ...parseDocumentFields(
+        backDocument.IdentityDocumentFields || [], 
+        backDocument.Blocks || []
+      ),
       rawResponse: backDocument
     };
+  } else {
+    console.log('\n========== BACK SIDE ==========');
+    console.log('❌ No back side document found');
   }
 
-  // Calculate combined confidence from both documents
   const confidences = [frontData.confidence];
   if (backData) {
     confidences.push(backData.confidence);
   }
   const combinedConfidence = confidences.reduce((a, b) => a + b, 0) / confidences.length;
+
+  console.log('\n========== SUMMARY ==========');
+  console.log(`✅ Combined confidence: ${(combinedConfidence * 100).toFixed(1)}%`);
+  console.log(`📊 Front confidence: ${(frontData.confidence * 100).toFixed(1)}%`);
+  if (backData) {
+    console.log(`📊 Back confidence: ${(backData.confidence * 100).toFixed(1)}%`);
+  }
 
   return {
     frontData,
@@ -309,19 +368,11 @@ function parseTextractResponse(response: any): DualSideScanResult {
   };
 }
 
-/**
- * Main function to call AWS Textract AnalyzeID
- * 
- * @param imageBase64 - Base64 encoded image (with or without data URL prefix)
- * @returns Parsed ID scan result
- */
 export async function scanIDWithTextract(images: string[]): Promise<DualSideScanResult> {
-  // Validate input
   if (!images || images.length === 0) {
     throw new Error('At least one image is required');
   }
 
-  // Validate AWS configuration
   if (!AWS_CONFIG.secretAccessKey) {
     throw new Error(
       'AWS Secret Access Key is not configured. Please update AWS_CONFIG.secretAccessKey in textractService.ts'
@@ -329,10 +380,7 @@ export async function scanIDWithTextract(images: string[]): Promise<DualSideScan
   }
 
   try {
-    // CHANGED: Process all images into DocumentPages array
-    // This is the key change - we're now sending multiple pages in one request
     const documentPages = images.map(imageBase64 => {
-      // Remove data URL prefix if present
       const base64Data = imageBase64.includes('base64,')
         ? imageBase64.split('base64,')[1]
         : imageBase64;
@@ -342,18 +390,12 @@ export async function scanIDWithTextract(images: string[]): Promise<DualSideScan
       };
     });
 
-    // CHANGED: Request body now contains multiple DocumentPages
-    // AWS Textract will process all pages in a single request
     const requestBody = JSON.stringify({
       DocumentPages: documentPages,
     });
-
-    // Generate AWS Signature V4 headers
     const headers = await generateAWSHeaders(requestBody);
-
     console.log(`📤 Calling AWS Textract with ${images.length} image(s)...`);
     
-    // Make API call (ONLY ONE CALL for both front and back)
     const response = await fetch(AWS_CONFIG.endpoint, {
       method: 'POST',
       headers,
@@ -367,7 +409,8 @@ export async function scanIDWithTextract(images: string[]): Promise<DualSideScan
     }
 
     const textractResponse = await response.json();
-    console.log('✅ Textract response received for all pages:', textractResponse);
+    console.log('✅ Textract response received');
+    console.log('🔍 Full raw response:', JSON.stringify(textractResponse, null, 2));
 
     return parseTextractResponse(textractResponse);
   } catch (error) {

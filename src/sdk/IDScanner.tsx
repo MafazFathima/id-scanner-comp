@@ -261,7 +261,8 @@ function IDScannerContent({
           style={{
             textAlign: "center",
             padding: "12px",
-            fontSize: "14px",
+            paddingBottom:showDebug ? "90px" : "12px",
+            fontSize: "16px",
             color: "#555",
           }}
         >

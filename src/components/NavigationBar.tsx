@@ -14,7 +14,10 @@ export function NavigationBar({ title, onBack, onClose, transparent = false }: N
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: 'var(--spacing-md) var(--spacing-lg)',
+      paddingTop: 'var(--spacing-md)',
+      // paddingRight: 'var(--spacing-xl)',
+      // paddingBottom: 'var(--spacing-xs)',
+      paddingLeft: 'var(--spacing-sm)',
       backgroundColor: transparent ? 'transparent' : 'var(--color-background)',
       borderBottom: transparent ? 'none' : '1px solid var(--color-border)',
       minHeight: '64px',
@@ -25,7 +28,7 @@ export function NavigationBar({ title, onBack, onClose, transparent = false }: N
             onClick={onBack}
             style={{
               display: 'flex',
-              alignItems: 'center',
+              // alignItems: 'center',
               justifyContent: 'center',
               width: '40px',
               height: '40px',

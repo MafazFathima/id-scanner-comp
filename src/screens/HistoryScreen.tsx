@@ -76,7 +76,8 @@ function HistoryScreenMobile({ scans, onSelectScan, onNewScan }: any) {
         flex: 1,
         display: 'flex',
         flexDirection: 'column',
-        padding: 'var(--spacing-lg)',
+        padding: '0px var(--spacing-lg) ',
+        // paddingTop: 'var(--spacing-xs)',
         gap: 'var(--spacing-lg)',
       }}>
         {/* Header */}

@@ -60,18 +60,23 @@ function DocumentSelectionMobile({ onSelectDocument, onBack }: DocumentSelection
       display: 'flex',
       flexDirection: 'column',
     }}>
-      <NavigationBar title="Select Document Type" onBack={onBack} />
+      {/* <NavigationBar title="Select Document Type" onBack={onBack} /> */}
+<div style={{ marginTop: 'var(--spacing-lg)' }}>
+  <NavigationBar title="Select Document Type" onBack={onBack} />
+</div>
 
       <main style={{
         flex: 1,
-        padding: 'var(--spacing-lg)',
+        paddingRight: 'var(--spacing-lg)',
+        paddingLeft: 'var(--spacing-lg)',
+        // paddingBottom: 'var(--spacing-xxl)',
         display: 'flex',
         flexDirection: 'column',
         gap: 'var(--spacing-lg)',
       }}>
         <div>
           <h2 style={{ margin: 0 }}>What would you like to scan?</h2>
-          <p className="caption" style={{ marginTop: 'var(--spacing-xs)', color: 'var(--color-text-secondary)' }}>
+          <p className="caption" style={{marginBottom:'-12px',marginTop: 'var(--spacing-xs)', color: 'var(--color-text-secondary)' }}>
             Select the type of document you want to scan
           </p>
         </div>

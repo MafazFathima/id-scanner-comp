@@ -20,12 +20,13 @@ export function WelcomeScreen({ onGetStarted }: WelcomeScreenProps) {
 function WelcomeScreenMobile({ onGetStarted }: WelcomeScreenProps) {
   return (
     <div style={{
-      minHeight: '100vh',
+      // minHeight: '100vh',
       backgroundColor: 'var(--color-background)',
       display: 'flex',
       flexDirection: 'column',
       padding: 'var(--spacing-lg)',
-      justifyContent: 'space-between',
+      // justifyContent: 'space-between',
+      gap: 'var(--spacing-xl)',
     }}>
       {/* Hero Section */}
       <div style={{
@@ -100,12 +101,14 @@ function WelcomeScreenMobile({ onGetStarted }: WelcomeScreenProps) {
         <Button variant="primary" fullWidth onClick={onGetStarted}>
           Get Started
         </Button>
-        <p className="caption" style={{ 
+        {/* <p className="caption" style={{ 
           margin: 0, 
           textAlign: 'center',
         }}>
           By continuing, you agree to our Terms & Privacy Policy
-        </p>
+        </p> */}
+        <div style={{ marginTop: '-30px'}}>
+        </div>
       </div>
     </div>
   );

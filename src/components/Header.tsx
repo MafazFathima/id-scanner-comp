@@ -12,7 +12,8 @@ export function Header({ title = 'Universal ID Scanner', showMenu = true }: Head
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: 'var(--spacing-md) var(--spacing-lg)',
+      padding: 'var(--spacing-xs) var(--spacing-lg)',
+      paddingTop: 'var(--spacing-xxl)',
       backgroundColor: 'var(--color-background)',
       borderBottom: '1px solid var(--color-border)',
     }}>
