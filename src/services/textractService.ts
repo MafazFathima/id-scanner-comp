@@ -10,7 +10,7 @@ interface AWSConfig {
 const AWS_CONFIG: AWSConfig = {
   region: 'us-east-1',
   service: 'textract',
-  accessKeyId: 'AKIA3VTPFXMJZVQR5LFV',
+  accessKeyId: import.meta.env.VITE_AWS_ACCESS_KEY_ID || '',
   secretAccessKey: import.meta.env.VITE_AWS_SECRET_ACCESS_KEY || '', 
   endpoint: 'https://textract.us-east-1.amazonaws.com',
 };
@@ -36,6 +36,8 @@ export interface IDScanResult {
   restrictions?: string;
   endorsements?: string;
   height?: string;
+  dd?: string;           // Document Discriminator
+  rev?: string;
   eyeColor?: string;
   confidence: number;
   rawResponse?: any; 
@@ -236,9 +238,13 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
 
   if (!height && allRawText) {
     // Look for height in format: Hgt 5'-05" or HGT 5-11 or HEIGHT 5'11"
-    const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)\s+(\d['\-]\d{2}"?)/i);
+    // const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)\s+(\d['\-]\d{2}"?)/i);
+    // if (heightMatch) {
+    //   height = heightMatch[1];
+    //   console.log(`🔍 FALLBACK: Found HEIGHT from raw text: "${height}"`);
+    const heightMatch = allRawText.match(/(?:HGT|HEIGHT|HT)[:\s]+(\d+['\s-]*\d+["']?)/i);
     if (heightMatch) {
-      height = heightMatch[1];
+      height = heightMatch[1].trim();
       console.log(`🔍 FALLBACK: Found HEIGHT from raw text: "${height}"`);
     }
   }
@@ -249,6 +255,25 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     if (eyeMatch) {
       eyeColor = eyeMatch[1].toUpperCase();
       console.log(`🔍 FALLBACK: Found EYE_COLOR from raw text: "${eyeColor}"`);
+    }
+  }
+   let dd: string | undefined;
+  if (allRawText) {
+    const ddMatch = allRawText.match(/\bDD\s+(\d{20,})/i);
+    if (ddMatch) {
+      dd = ddMatch[1].trim();
+      console.log(`🔍 FALLBACK: Found DD (Document Discriminator) from raw text: "${dd}"`);
+    }
+  }
+
+  // ✨ NEW: Extract REV (Revision Date) from raw text
+  // Matches patterns like: REV 10 10/2016 or REV 10/10/2016
+  let rev: string | undefined;
+  if (allRawText) {
+    const revMatch = allRawText.match(/\bREV\s+(\d{2}\s+\d{2}\/\d{4}|\d{2}\/\d{2}\/\d{4})/i);
+    if (revMatch) {
+      rev = revMatch[1].trim();
+      console.log(`🔍 FALLBACK: Found REV (Revision Date) from raw text: "${rev}"`);
     }
   }
 
@@ -283,6 +308,8 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     endorsements: getFieldValue('ENDORSEMENTS', ['END', 'ENDORSE']) || undefined,
     height: height || undefined,
     eyeColor: eyeColor || undefined,
+     dd: dd,
+    rev: rev,
     confidence: avgConfidence / 100,
   };
 
@@ -292,6 +319,8 @@ function parseDocumentFields(documentFields: any[], rawBlocks?: any[]): IDScanRe
     sex: result.sex || 'NOT DETECTED',
     height: result.height || 'NOT DETECTED',
     eyeColor: result.eyeColor || 'NOT DETECTED',
+    dd: result.dd || 'NOT DETECTED',
+    rev: result.rev || 'NOT DETECTED',
     confidence: `${(result.confidence * 100).toFixed(1)}%`
   });
 
@@ -330,6 +359,10 @@ function parseTextractResponse(response: any): DualSideScanResult {
         state: '',
         stateName: '',
         zipCode: '',
+        height: undefined,          // ✨ ADDED
+        eyeColor: undefined,        // ✨ ADDED
+        dd: undefined,              // ✨ ADDED
+        rev: undefined,  
         confidence: 0,
       };
 

@@ -49,6 +49,8 @@ const FIELD_LABELS: Record<string, string> = {
   height: "Height",
   suffix: "Suffix",
   eyeColor: "Eye Color",
+  dd: "Document Discriminator",
+  rev: "Revision Date",
 };
 
 const FIELD_ICONS: Record<string, React.ReactNode> = {
@@ -72,6 +74,8 @@ const FIELD_ICONS: Record<string, React.ReactNode> = {
   height: <User size={20} color="var(--color-primary)" />,
   suffix: <User size={20} color="var(--color-primary)" />,
   eyeColor: <User size={20} color="var(--color-primary)" />,
+  dd: <Hash size={20} color="var(--color-primary)" />,         // ✨ NEW
+  rev: <Calendar size={20} color="var(--color-primary)" />,
 };
 
 export function ResultsScreen({ scanData, capturedImages, onBack, onNewScan }: ResultsScreenProps) {
