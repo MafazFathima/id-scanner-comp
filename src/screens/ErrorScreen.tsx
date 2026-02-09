@@ -13,17 +13,17 @@ interface ErrorScreenProps {
 export function ErrorScreen({ onRetry, onBack, errorType = 'scan-failed' }: ErrorScreenProps) {
   const errorContent = {
     'scan-failed': {
-      icon: <XCircle size={68} color="var(--color-error)" />,
+      icon: <XCircle size={48} color="var(--color-error)" />,
       title: 'Scan Failed',
       description: 'We couldn\'t process the ID. Please try again with better lighting and positioning.',
     },
     'no-id-detected': {
-      icon: <AlertTriangle size={68} color="#f59e0b" />,
+      icon: <AlertTriangle size={48} color="#f59e0b" />,
       title: 'No ID Detected',
       description: 'We couldn\'t detect an ID in the image. Make sure the entire document is visible.',
     },
     'poor-quality': {
-      icon: <AlertTriangle size={68} color="#f59e0b" />,
+      icon: <AlertTriangle size={58} color="#f59e0b" />,
       title: 'Image Quality Too Low',
       description: 'The image is too blurry or dark. Please ensure good lighting and hold steady.',
     },

@@ -1,10 +1,11 @@
-// src/screens/ScanningScreen.tsx - FIXED: Centering and button visibility issues
+// src/screens/ScanningScreen.tsx - UPDATED with Unified ID Extraction
 import React, { useEffect, useState } from 'react';
 import { NavigationBar } from '../components/NavigationBar';
-import { Loader2, CheckCircle, AlertCircle, RotateCcw } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, RotateCcw, Zap, Barcode } from 'lucide-react';
 import { CameraCapture } from '../components/CameraCapture';
-import { scanIDWithTextract } from '../services/textractService';
-import type { IDScanResult, DualSideScanResult } from '../services/textractService';
+// ⚡ CHANGE 1: Updated import to use new unified service
+import { extractIDData } from '../services/idExtractionService';
+import type { IDScanResult, DualSideScanResult } from '../services/idExtractionService';
 import type { DocumentType, ScanSide, ScanProgress } from '../sdk/types';
 import { Button } from '../components/Button';
 
@@ -72,13 +73,13 @@ export function ScanningScreen({
         setCurrentStep('capture-back');
         setStatus('Position BACK side in frame');
       } else {
-        console.log('✅ Front captured. Processing with single API call...');
+        console.log('✅ Front captured. Starting extraction...');
         setCurrentStep('processing');
         await processBothSides(imageBase64, null);
       }
     } else {
       setBackImage(imageBase64);
-      console.log('✅ Both sides captured. Processing with single API call...');
+      console.log('✅ Both sides captured. Starting extraction...');
       setCurrentStep('processing');
       await processBothSides(frontImage!, imageBase64);
     }
@@ -86,17 +87,18 @@ export function ScanningScreen({
 
   const processBothSides = async (frontImg: string, backImg: string | null) => {
     try {
-      setStatus('Processing both sides...');
+      setStatus('Preparing extraction...');
       setProgress(10);
       await delay(300);
 
-      setStatus('Preparing images for processing...');
+      setStatus('Analyzing images...');
       setProgress(20);
       await delay(300);
 
       const imagesToProcess = backImg ? [frontImg, backImg] : [frontImg];
       
-      setStatus('Encoding image data...');
+      // ⚡ CHANGE 2: Updated status message to reflect unified extraction
+      setStatus('Running barcode + OCR extraction...');
       setProgress(30);
       await delay(300);
 
@@ -104,18 +106,22 @@ export function ScanningScreen({
       setProgress(40);
       await delay(300);
 
-      console.log(`🔍 Calling AWS Textract with ${imagesToProcess.length} image(s)...`);
+      // ⚡ CHANGE 3: Using unified extraction service
+      console.log(`🔍 Starting unified extraction (Barcode + OCR)...`);
       console.log('📊 Image sizes:', imagesToProcess.map(img => img.length));
 
-      const result: DualSideScanResult = await scanIDWithTextract(imagesToProcess);
+      const result: DualSideScanResult = await extractIDData(imagesToProcess);
       
-      console.log('✅ Textract response received:', result);
+      // ⚡ CHANGE 4: Updated logging to show extraction method
+      console.log('✅ Extraction complete:', result);
       console.log('📋 Front data extracted:', {
         name: result.frontData.fullName,
         dob: result.frontData.dateOfBirth,
         sex: result.frontData.sex || 'NOT DETECTED',
         height: result.frontData.height || 'NOT DETECTED',
         eyeColor: result.frontData.eyeColor || 'NOT DETECTED',
+        method: result.frontData.extractionMethod?.toUpperCase() || 'UNKNOWN',
+        confidence: `${(result.frontData.confidence * 100).toFixed(1)}%`,
       });
       
       if (result.backData) {
@@ -124,21 +130,26 @@ export function ScanningScreen({
           sex: result.backData.sex || 'NOT DETECTED',
           height: result.backData.height || 'NOT DETECTED',
           eyeColor: result.backData.eyeColor || 'NOT DETECTED',
+          method: result.backData.extractionMethod?.toUpperCase() || 'UNKNOWN',
+          confidence: `${(result.backData.confidence * 100).toFixed(1)}%`,
         });
       }
       
       setProgress(70);
-      setStatus('Extracting data from front side...');
+      // ⚡ CHANGE 5: Updated status to show actual extraction method
+      const methodLabel = result.frontData.extractionMethod === 'barcode' ? 'PDF417 Barcode' :
+                         result.frontData.extractionMethod === 'ocr' ? 'OCR' : 'Combined';
+      setStatus(`Extracted via ${methodLabel}...`);
       await delay(300);
 
       if (backImg) {
         setProgress(85);
-        setStatus('Extracting data from back side...');
+        setStatus('Processing back side...');
         await delay(300);
       }
 
       setProgress(95);
-      setStatus('Validating extracted information...');
+      setStatus('Validating information...');
       await delay(300);
 
       setProgress(100);
@@ -153,18 +164,11 @@ export function ScanningScreen({
         backData: result.backData,
       };
 
-      console.log('📦 Sending complete result to parent component');
+      console.log('📦 Sending result to parent component');
       console.log(`✅ Combined confidence: ${(result.combinedConfidence * 100).toFixed(1)}%`);
-      console.log('📊 Complete result summary:', {
-        documentType: completeResult.documentType,
-        hasBackImage: !!completeResult.backImage,
-        hasBackData: !!completeResult.backData,
-        frontDataFields: {
-          name: completeResult.frontData.fullName,
-          sex: completeResult.frontData.sex || 'NOT DETECTED',
-          height: completeResult.frontData.height || 'NOT DETECTED',
-          eyeColor: completeResult.frontData.eyeColor || 'NOT DETECTED',
-        }
+      console.log('📊 Extraction methods:', {
+        front: result.frontData.extractionMethod,
+        back: result.backData?.extractionMethod || 'N/A',
       });
       
       setCurrentStep('complete');
@@ -249,10 +253,8 @@ export function ScanningScreen({
       <div style={{
         height: '100vh',
         width: '100vw',
-        // maxWidth: '100%',
         backgroundColor: '#000000',
         display: 'flex',
-        // flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         padding: '0',
@@ -378,11 +380,6 @@ export function ScanningScreen({
           marginBottom:'96px',
         }}>
           Processing {backImage ? 'BOTH sides' : 'document'}
-          {/* {backImage && (
-            <div style={{ fontSize: '14px', marginTop: '4px', opacity: 0.9 }}>
-              ✓ Using single API call
-            </div>
-          )} */}
         </div>
 
         <div style={{
@@ -553,9 +550,10 @@ export function ScanningScreen({
                 fontSize: '13px',
                 textAlign: 'center',
               }}>
+                {/* ⚡ CHANGE 6: Updated message */}
                 {backImage 
-                  ? '⚡ Processing both sides' 
-                  : '🔒 All processing happens securely'
+                  ? '⚡ Smart extraction active' 
+                  : '🔒 Secure processing'
                 }
               </p>
             </div>

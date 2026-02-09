@@ -253,11 +253,12 @@ function IDScannerContent({
         style={{
           width: "100%",
           height: "100%",
+          paddingBottom: showDebug ? "70px" : "0",
           overflow: currentScreen === "scanning" ? "hidden" : "auto",
         }}
       >
         {renderScreen()}
-        <div
+        {/* <div
           style={{
             textAlign: "center",
             padding: "12px",
@@ -267,7 +268,7 @@ function IDScannerContent({
           }}
         >
           By continuing, you agree to our Terms & Privacy Policy
-        </div>
+        </div> */}
       </div>
       {showDebug && <DebugPanel />}
     </div>

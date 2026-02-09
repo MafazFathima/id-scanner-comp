@@ -69,7 +69,7 @@ function DocumentSelectionMobile({ onSelectDocument, onBack }: DocumentSelection
         flex: 1,
         paddingRight: 'var(--spacing-lg)',
         paddingLeft: 'var(--spacing-lg)',
-        // paddingBottom: 'var(--spacing-xxl)',
+        paddingBottom: 'var(--spacing-sm)',
         display: 'flex',
         flexDirection: 'column',
         gap: 'var(--spacing-lg)',
