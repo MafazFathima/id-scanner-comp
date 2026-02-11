@@ -37,6 +37,81 @@ interface ExtractionApiResponse {
   [key: string]: unknown;
 }
 
+const ID_ASPECT_RATIO = 1.586; // ID-1 card ratio
+const JPEG_UPLOAD_QUALITY = 0.99;
+
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Failed to load image for preprocessing"));
+    img.src = src;
+  });
+}
+
+async function prepareImageForUpload(imageBase64: string): Promise<string> {
+  const image = await loadImage(imageBase64);
+
+  const srcWidth = image.naturalWidth || image.width;
+  const srcHeight = image.naturalHeight || image.height;
+
+  if (!srcWidth || !srcHeight) {
+    throw new Error("Invalid image dimensions");
+  }
+
+  let cropX = 0;
+  let cropY = 0;
+  let cropWidth = srcWidth;
+  let cropHeight = srcHeight;
+
+  const sourceAspect = srcWidth / srcHeight;
+
+  // Center-crop to ID card aspect ratio for consistent extraction input.
+  if (sourceAspect > ID_ASPECT_RATIO) {
+    cropWidth = Math.round(srcHeight * ID_ASPECT_RATIO);
+    cropX = Math.round((srcWidth - cropWidth) / 2);
+  } else if (sourceAspect < ID_ASPECT_RATIO) {
+    cropHeight = Math.round(srcWidth / ID_ASPECT_RATIO);
+    cropY = Math.round((srcHeight - cropHeight) / 2);
+  }
+
+  const canvas = document.createElement("canvas");
+  const context = canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error("Failed to create canvas context");
+  }
+
+  canvas.width = Math.max(1, cropWidth);
+  canvas.height = Math.max(1, cropHeight);
+
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    canvas.width,
+    canvas.height,
+  );
+
+  const processedBase64 = canvas.toDataURL("image/jpeg", JPEG_UPLOAD_QUALITY);
+
+  console.log("[ID-EXTRACT] Image preprocessing:", {
+    sourceResolution: `${srcWidth}x${srcHeight}`,
+    uploadResolution: `${canvas.width}x${canvas.height}`,
+    sourceAspect: sourceAspect.toFixed(3),
+    targetAspect: ID_ASPECT_RATIO,
+    estimatedSizeKB: Math.round((processedBase64.length * 0.75) / 1024),
+  });
+
+  return processedBase64;
+}
+
 function toIDScanResult(result: any): IDScanResult {
   const structured = result?.structuredData || {};
   const person = structured.person || {};
@@ -88,7 +163,8 @@ export async function extractIDData(images: string[]): Promise<DualSideScanResul
   for (let i = 0; i < uploadImages.length; i++) {
     const image = uploadImages[i];
     const side = i === 0 ? "front" : "back";
-    const blob = await fetch(image).then((r) => r.blob());
+    const processedImage = await prepareImageForUpload(image);
+    const blob = await fetch(processedImage).then((r) => r.blob());
     formData.append("files", blob, `DL ${side}.jpg`);
   }
 

@@ -11,6 +11,7 @@ interface CameraCaptureProps {
 export function CameraCapture({ onCapture, onCancel, onError }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const captureFrameRef = useRef<HTMLDivElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isCaptured, setIsCaptured] = useState(false);
@@ -257,8 +258,32 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     });
 
     // ✅ Use actual video dimensions
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    let sourceX = 0;
+    let sourceY = 0;
+    let sourceWidth = video.videoWidth;
+    let sourceHeight = video.videoHeight;
+
+    const videoRect = video.getBoundingClientRect();
+    const frameRect = captureFrameRef.current?.getBoundingClientRect();
+
+    if (frameRect && videoRect.width > 0 && videoRect.height > 0 && video.videoWidth > 0 && video.videoHeight > 0) {
+      const scale = Math.max(videoRect.width / video.videoWidth, videoRect.height / video.videoHeight);
+      const displayedWidth = video.videoWidth * scale;
+      const displayedHeight = video.videoHeight * scale;
+      const overflowX = (displayedWidth - videoRect.width) / 2;
+      const overflowY = (displayedHeight - videoRect.height) / 2;
+
+      const frameLeft = frameRect.left - videoRect.left;
+      const frameTop = frameRect.top - videoRect.top;
+
+      sourceX = Math.max(0, (frameLeft + overflowX) / scale);
+      sourceY = Math.max(0, (frameTop + overflowY) / scale);
+      sourceWidth = Math.min(video.videoWidth - sourceX, frameRect.width / scale);
+      sourceHeight = Math.min(video.videoHeight - sourceY, frameRect.height / scale);
+    }
+
+    canvas.width = Math.max(1, Math.round(sourceWidth));
+    canvas.height = Math.max(1, Math.round(sourceHeight));
 
     console.log('🎨 Canvas dimensions set:', {
       width: canvas.width,
@@ -270,7 +295,17 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = 'high';
 
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    context.drawImage(
+      video,
+      sourceX,
+      sourceY,
+      sourceWidth,
+      sourceHeight,
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
 
     // Validate canvas has actual image data
     const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
@@ -289,7 +324,7 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     });
 
     // ✅ CRITICAL: Use 0.95 quality (was 0.95, keeping it high)
-    const base64Image = canvas.toDataURL('image/jpeg', 0.95);
+    const base64Image = canvas.toDataURL('image/jpeg', 0.99);
 
     const imageSizeKB = Math.round((base64Image.length * 0.75) / 1024);
     
@@ -479,7 +514,9 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
           justifyContent: 'center',
           flex: 1,
         }}>
-          <div style={{
+          <div
+          ref={captureFrameRef}
+          style={{
             width: 'min(85vw, 400px)',
             aspectRatio: '1.586',
             border: '3px solid #10b981',

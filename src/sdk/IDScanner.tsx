@@ -63,7 +63,6 @@ function IDScannerContent({
   
   // Two-sided scanning state
   const [selectedDocumentType, setSelectedDocumentType] = React.useState<DocumentType>('drivers-license');
-  const [lastScanResult, setLastScanResult] = React.useState<ScanResult | null>(null);
   const [lastCompleteScan, setLastCompleteScan] = React.useState<any>(null);
 
   const handleGetStarted = () => navigate("scan");
@@ -129,25 +128,21 @@ function IDScannerContent({
       },
     };
 
-    setLastCompleteScan(completeScanData);
-    setLastScanResult(result);
-    addScanResult(result);
-    callbacks.onScanComplete?.(completeScanData);
-    navigate("results");
-  };
+    const completeResult = {
+      ...completeScanData,
+      timestamp: result.timestamp,
+      confidence: result.confidence,
+    };
 
-  const handleScanError = (error: Error) => {
-    callbacks.onScanError?.({
-      code: "scan-failed",
-      message: error.message,
-      details: error,
-    });
-    navigate("error");
+    setLastCompleteScan(completeResult);
+    addScanResult(result);
+    callbacks.onScanComplete?.(completeResult);
+    navigate("results");
   };
 
   const handleNewScan = () => navigate("document-selection");
   const handleViewHistory = () => navigate("history");
-  const handleSelectScan = (scanId: string) => {
+  const handleSelectScan = (_scanId: string) => {
     navigate("results");
   };
 
@@ -276,7 +271,7 @@ function IDScannerContent({
 }
 
 function DebugPanel() {
-  const { currentScreen, navigate, theme, config } = useSDK();
+  const { currentScreen, navigate, theme } = useSDK();
   const screens: SDKScreen[] = [
     "welcome",
     "scan",
