@@ -63,6 +63,7 @@ function IDScannerContent({
   
   // Two-sided scanning state
   const [selectedDocumentType, setSelectedDocumentType] = React.useState<DocumentType>('drivers-license');
+  const [scanMode, setScanMode] = React.useState<'camera' | 'upload'>('camera');
   const [lastScanResult, setLastScanResult] = React.useState<ScanResult | null>(null);
   const [lastCompleteScan, setLastCompleteScan] = React.useState<any>(null);
 
@@ -71,11 +72,13 @@ function IDScannerContent({
 
   // Navigate to document selection
   const handleStartScan = () => {
+    setScanMode('camera');
     callbacks.onScanStart?.();
     navigate("document-selection");
   };
 
   const handleUploadImage = () => {
+    setScanMode('upload');
     callbacks.onScanStart?.();
     navigate("document-selection");
   };
@@ -206,7 +209,7 @@ function IDScannerContent({
           <ScanningScreen
             onComplete={handleScanComplete}
             onCancel={() => navigate("document-selection")}
-            mode="camera"
+            mode={scanMode}
             documentType={selectedDocumentType}
             requiresBackScan={config.features?.requireBackScan !== false}
           />

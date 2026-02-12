@@ -150,7 +150,7 @@ export default function App() {
   const idNumber = (data as any).idNumber ?? (data as any).data?.idNumber ?? 'N/A';
   const confidence = (data as any).confidence ?? (data as any).data?.confidence ?? 0;
 
-  alert(`Scan successful!\n\nName: ${fullName}\nID: ${idNumber}\nConfidence: ${(confidence * 100).toFixed(1)}%`);
+  // alert(`Scan successful!\n\nName: ${fullName}\nID: ${idNumber}\nConfidence: ${(confidence * 100).toFixed(1)}%`);
 },
 
             onScanError: (error) => {
