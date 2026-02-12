@@ -1,12 +1,12 @@
 // src/screens/ScanningScreen.tsx - UPDATED with Unified ID Extraction
-import React, { useEffect, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { NavigationBar } from '../components/NavigationBar';
-import { Loader2, CheckCircle, AlertCircle, RotateCcw, Zap, Barcode } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, RotateCcw, Upload } from 'lucide-react';
 import { CameraCapture } from '../components/CameraCapture';
 // ⚡ CHANGE 1: Updated import to use new unified service
 import { extractIDData } from '../services/idExtractionService';
 import type { IDScanResult, DualSideScanResult } from '../services/idExtractionService';
-import type { DocumentType, ScanSide, ScanProgress } from '../sdk/types';
+import type { DocumentType, ScanSide } from '../sdk/types';
 import { Button } from '../components/Button';
 
 interface ScanningScreenProps {
@@ -46,11 +46,47 @@ export function ScanningScreen({
   const [backImage, setBackImage] = useState<string | null>(null);
   
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState('Position FRONT side in frame');
+  const [status, setStatus] = useState(mode === 'upload' ? 'Select FRONT image from device' : 'Position FRONT side in frame');
   const [error, setError] = useState<string | null>(null);
  
   const [cameraKey, setCameraKey] = useState<number>(0);
   const [showCamera, setShowCamera] = useState<boolean>(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read selected image'));
+      reader.readAsDataURL(file);
+    });
+
+  const handleUploadPick = () => {
+    if (!fileInputRef.current) return;
+    fileInputRef.current.value = '';
+    fileInputRef.current.click();
+  };
+
+  const handleUploadFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    if (!selectedFile) return;
+
+    if (!selectedFile.type.startsWith('image/')) {
+      setError('Please select an image file');
+      return;
+    }
+
+    try {
+      setError(null);
+      setStatus(`Loading ${currentSide.toUpperCase()} image...`);
+      const base64Image = await fileToBase64(selectedFile);
+      await handleImageCapture(base64Image);
+    } catch (err) {
+      const uploadError = err as Error;
+      setError(uploadError.message || 'Failed to load selected image');
+      setStatus('Upload failed');
+    }
+  };
 
   const handleImageCapture = async (imageBase64: string) => {
     console.log(`📸 ${currentSide.toUpperCase()} side captured, size:`, imageBase64.length);
@@ -71,7 +107,7 @@ export function ScanningScreen({
         setCameraKey(prev => prev + 1);
         setShowCamera(true);
         setCurrentStep('capture-back');
-        setStatus('Position BACK side in frame');
+        setStatus(mode === 'upload' ? 'Select BACK image from device' : 'Position BACK side in frame');
       } else {
         console.log('✅ Front captured. Starting extraction...');
         setCurrentStep('processing');
@@ -198,16 +234,16 @@ export function ScanningScreen({
     setBackImage(null);
     setCurrentSide('front');
     setCameraKey(prev => prev + 1);
-    setShowCamera(true);
+    setShowCamera(mode === 'camera');
     setCurrentStep('capture-front');
     setProgress(0);
     setError(null);
-    setStatus('Position FRONT side in frame');
+    setStatus(mode === 'upload' ? 'Select FRONT image from device' : 'Position FRONT side in frame');
   };
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  if (currentStep === 'capture-front' && showCamera) {
+  if (mode === 'camera' && currentStep === 'capture-front' && showCamera) {
     return (
       <div style={{ 
         position: 'fixed',
@@ -281,7 +317,7 @@ export function ScanningScreen({
     );
   }
 
-  if (currentStep === 'capture-back' && showCamera) {
+  if (mode === 'camera' && currentStep === 'capture-back' && showCamera) {
     return (
       <div style={{ 
         position: 'fixed',
@@ -319,6 +355,97 @@ export function ScanningScreen({
             onCapture={handleImageCapture}
             onCancel={onCancel}
             onError={handleCameraError}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (mode === 'upload' && (currentStep === 'capture-front' || currentStep === 'capture-back')) {
+    const sideLabel = currentStep === 'capture-front' ? 'FRONT' : 'BACK';
+    const sideColor = currentStep === 'capture-front' ? '#3b82f6' : '#8b5cf6';
+    const previewImage = currentStep === 'capture-front' ? frontImage : backImage;
+
+    return (
+      <div style={{
+        minHeight: '100vh',
+        width: '100vw',
+        maxWidth: '100%',
+        backgroundColor: '#0b1220',
+        display: 'flex',
+        flexDirection: 'column',
+      }}>
+        <NavigationBar onClose={onCancel} />
+        <div style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+          padding: '24px',
+        }}>
+          <div style={{
+            padding: '8px 14px',
+            borderRadius: '8px',
+            backgroundColor: sideColor,
+            color: 'white',
+            fontWeight: 600,
+            fontSize: '14px',
+          }}>
+            Upload {sideLabel} side
+          </div>
+
+          <div style={{
+            width: '100%',
+            maxWidth: '440px',
+            aspectRatio: '1.586',
+            borderRadius: '12px',
+            border: '2px dashed rgba(255, 255, 255, 0.4)',
+            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}>
+            {previewImage ? (
+              <img
+                src={previewImage}
+                alt={`${sideLabel} preview`}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', color: 'rgba(255, 255, 255, 0.85)' }}>
+                <Upload size={28} style={{ marginBottom: '8px' }} />
+                <div>Select a clear {sideLabel.toLowerCase()} image</div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ width: '100%', maxWidth: '440px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <Button variant="primary" fullWidth icon={<Upload size={18} />} onClick={handleUploadPick}>
+              Upload {sideLabel} image
+            </Button>
+            {error && (
+              <div style={{
+                padding: '10px 12px',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                border: '1px solid rgba(239, 68, 68, 0.5)',
+                color: '#fecaca',
+                fontSize: '13px',
+              }}>
+                {error}
+              </div>
+            )}
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleUploadFileChange}
           />
         </div>
       </div>
