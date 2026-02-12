@@ -1,9 +1,9 @@
-// src/components/CameraCapture.tsx - ENHANCED FOR BARCODE SCANNING
+// src> Component>CameraCapture.tsx
 import React, { useRef, useEffect, useState } from 'react';
-import { Camera, X, Circle, AlertCircle } from 'lucide-react';
+import { Camera, X, Circle, Component } from 'lucide-react';
 
 interface CameraCaptureProps {
-  onCapture: (imageData: string) => void;
+  onCapture: (imageData: string) => void; 
   onCancel: () => void;
   onError?: (error: Error) => void;
 }
@@ -11,12 +11,11 @@ interface CameraCaptureProps {
 export function CameraCapture({ onCapture, onCancel, onError }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null); 
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isReady, setIsReady] = useState(false);
   const [isCaptured, setIsCaptured] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [actualResolution, setActualResolution] = useState<string>('');
-  const [qualityWarning, setQualityWarning] = useState<string | null>(null);
 
   useEffect(() => {
     const originalOverflow = document.body.style.overflow;
@@ -29,8 +28,7 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     document.body.style.width = '100vw';
     
     startCamera();
-    
-    return () => {
+        return () => {
       console.log('🔴 CameraCapture: Cleaning up camera...');
       stopCamera();
       
@@ -63,139 +61,26 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     };
   }, [stream]);
 
-  // ✅ ENHANCED: Better resolution strategy with focus controls
   const startCamera = async () => {
     try {
-      console.log('📹 Starting camera with enhanced settings...');
-      
-      let mediaStream: MediaStream | null = null;
-      
-      // ✅ FIX: Request higher resolutions with better constraints
-      const resolutions = [
-        { 
-          width: 3840, 
-          height: 2160, 
-          label: '4K (Ideal for barcodes)',
-          constraints: {
-            video: {
-              facingMode: 'environment',
-              width: { ideal: 3840, min: 1920 },
-              height: { ideal: 2160, min: 1080 },
-              // ✅ CRITICAL: Request manual focus mode for better barcode scanning
-              focusMode: 'continuous',
-              // ✅ Request higher frame rate for steadier capture
-              frameRate: { ideal: 30 },
-            }
-          }
+      console.log('📹 Starting camera...');
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'environment', 
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
         },
-        { 
-          width: 1920, 
-          height: 1080, 
-          label: '1080p (Good)',
-          constraints: {
-            video: {
-              facingMode: 'environment',
-              width: { ideal: 1920, min: 1280 },
-              height: { ideal: 1080, min: 720 },
-              focusMode: 'continuous',
-              frameRate: { ideal: 30 },
-            }
-          }
-        },
-        { 
-          width: 1280, 
-          height: 720, 
-          label: '720p (Minimum)',
-          constraints: {
-            video: {
-              facingMode: 'environment',
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
-              focusMode: 'continuous',
-              frameRate: { ideal: 30 },
-            }
-          }
-        },
-      ];
+      });
 
-      let achievedResolution = '';
-      
-      for (const res of resolutions) {
-        try {
-          console.log(`📹 Attempting ${res.label}...`);
-          mediaStream = await navigator.mediaDevices.getUserMedia(res.constraints);
-          achievedResolution = res.label;
-          console.log(`✅ ${res.label} acquired!`);
-          break;
-        } catch (err) {
-          console.log(`⚠️ ${res.label} not available, trying next...`);
-        }
-      }
-
-      // Fallback to any available camera
-      if (!mediaStream) {
-        console.log('⚠️ Using fallback camera settings...');
-        mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' },
-        });
-        achievedResolution = 'Default';
-      }
-
-      if (videoRef.current && mediaStream) {
+      if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+
+        videoRef.current.onloadedmetadata = () => {
         setStream(mediaStream);
-        
-        await new Promise<void>((resolve) => {
-          if (videoRef.current) {
-            videoRef.current.onloadedmetadata = () => {
-              console.log('✅ Video metadata loaded');
-              resolve();
-            };
-          }
-        });
-        
         setIsReady(true);
-        
-        // Get actual resolution and settings
-        const track = mediaStream.getVideoTracks()[0];
-        const settings = track.getSettings();
-        const capabilities = track.getCapabilities?.();
-        
-        const width = settings.width || 0;
-        const height = settings.height || 0;
-        const resLabel = `${width}x${height}`;
-        const megapixels = ((width * height) / 1000000).toFixed(1);
-        
-        setActualResolution(resLabel);
-        
-        console.log(`✅ Camera started: ${resLabel} (${megapixels}MP)`);
-        console.log('📊 Camera settings:', {
-          resolution: resLabel,
-          megapixels,
-          focusMode: settings.focusMode || 'not reported',
-          frameRate: settings.frameRate || 'not reported',
-          facingMode: settings.facingMode || 'not reported',
-        });
-        
-        // ✅ QUALITY WARNING: Alert if resolution is too low
-        if (width < 1920) {
-          const warning = width < 1280 
-            ? '⚠️ Low resolution - barcode detection may fail'
-            : '⚠️ Moderate resolution - use good lighting';
-          setQualityWarning(warning);
-          console.warn(warning, `Got ${width}x${height}`);
-        } else {
-          setQualityWarning(null);
-        }
-        
-        if (capabilities) {
-          console.log('📱 Camera capabilities:', {
-            maxWidth: capabilities.width?.max,
-            maxHeight: capabilities.height?.max,
-            supportsFocusMode: !!capabilities.focusMode,
-          });
-        }
-      }
+        console.log('✅ Camera started successfully');
+      };
+    }
     } catch (err) {
       const error = err as Error;
       setError(error.message);
@@ -236,7 +121,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
     console.log('✅ Camera stopped completely');
   };
 
-  // ✅ ENHANCED: Better image capture with quality validation
   const captureImage = async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
@@ -256,23 +140,83 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       ended: video.ended
     });
 
-    // ✅ Use actual video dimensions
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    const videoElement = videoRef.current;
+    const videoDisplayWidth = videoElement.clientWidth;
+    const videoDisplayHeight = videoElement.clientHeight;
+   
+    if (!overlayRef.current) {
+      console.error('❌ Overlay ref not found!');
+      return;
+    }
 
-    console.log('🎨 Canvas dimensions set:', {
-      width: canvas.width,
-      height: canvas.height,
-      megapixels: ((canvas.width * canvas.height) / 1000000).toFixed(2)
-    });
+    // Get actual rectangles
+const videoRect = video.getBoundingClientRect();
+const overlayRect = overlayRef.current!.getBoundingClientRect();
 
-    // ✅ CRITICAL: Use highest quality settings
-    context.imageSmoothingEnabled = true;
-    context.imageSmoothingQuality = 'high';
+// Overlay position relative to video element
+const overlayLeft = overlayRect.left - videoRect.left;
+const overlayTop = overlayRect.top - videoRect.top;
+const overlayWidth = overlayRect.width;
+const overlayHeight = overlayRect.height;
 
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+// REAL video resolution
+const videoWidth = video.videoWidth;
+const videoHeight = video.videoHeight;
 
-    // Validate canvas has actual image data
+// Displayed video size
+const displayWidth = videoRect.width;
+const displayHeight = videoRect.height;
+
+// === HANDLE object-fit: cover CROPPING ===
+const videoAspect = videoWidth / videoHeight;
+const displayAspect = displayWidth / displayHeight;
+
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+
+if (videoAspect > displayAspect) {
+  // Video is wider → cropped horizontally
+  scale = displayHeight / videoHeight;
+  const scaledWidth = videoWidth * scale;
+  offsetX = (scaledWidth - displayWidth) / 2;
+} else {
+  // Video is taller → cropped vertically
+  scale = displayWidth / videoWidth;
+  const scaledHeight = videoHeight * scale;
+  offsetY = (scaledHeight - displayHeight) / 2;
+}
+
+// Convert overlay display → real video pixels
+const cropX = (overlayLeft + offsetX) / scale;
+const cropY = (overlayTop + offsetY) / scale;
+const cropW = overlayWidth / scale;
+const cropH = overlayHeight / scale;
+
+// Clamp values (avoid black capture)
+const finalX = Math.max(0, cropX);
+const finalY = Math.max(0, cropY);
+const finalW = Math.max(0, Math.min(videoWidth - finalX, cropW));
+const finalH = Math.max(0, Math.min(videoHeight - finalY, cropH));
+
+
+// Set canvas size
+canvas.width = Math.round(finalW);
+canvas.height = Math.round(finalH);
+
+// Draw ONLY overlay area
+context.drawImage(
+  video,
+  Math.round(finalX),
+  Math.round(finalY),
+  Math.round(finalW),
+  Math.round(finalH),
+  0,
+  0,
+  canvas.width,
+  canvas.height
+);
+
     const imageData = context.getImageData(0, 0, Math.min(100, canvas.width), Math.min(100, canvas.height));
     const pixels = imageData.data;
     let nonZeroPixels = 0;
@@ -288,8 +232,8 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       percentageNonZero: ((nonZeroPixels / (pixels.length / 4)) * 100).toFixed(2) + '%'
     });
 
-    // ✅ CRITICAL: Use 0.95 quality (was 0.95, keeping it high)
     const base64Image = canvas.toDataURL('image/jpeg', 0.95);
+console.log('base64:',base64Image);
 
     const imageSizeKB = Math.round((base64Image.length * 0.75) / 1024);
     
@@ -304,7 +248,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       lastChars: base64Image.substring(base64Image.length - 100)
     });
 
-    // ✅ QUALITY CHECK: Warn if image is too small
     if (imageSizeKB < 150) {
       console.warn(`⚠️ Image quality may be too low: ${imageSizeKB}KB (recommend >200KB)`);
     }
@@ -313,7 +256,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       console.warn(`⚠️ Resolution lower than ideal: ${canvas.width}x${canvas.height} (recommend 1920x1080+)`);
     }
 
-    // Validate image loads correctly
     const testImg = new Image();
     testImg.onload = () => {
       console.log('✅ Base64 image is valid and loadable:', {
@@ -332,7 +274,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
 
     setIsCaptured(true);
     stopCamera();
-
     setTimeout(() => {
       onCapture(base64Image);
     }, 200);
@@ -379,7 +320,6 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       </div>
     );
   }
-
   return (
     <div style={{
       height: '100vh',
@@ -409,16 +349,15 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
       />
 
       <canvas ref={canvasRef} style={{ display: 'none' }} />
-
       <div style={{
         position: 'absolute',
         inset: 0,
         background: 'linear-gradient(180deg, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.3) 30%, rgba(0,0,0,0.3) 70%, rgba(0,0,0,0.6) 100%)',
         display: 'flex',
         flexDirection: 'column',
-        padding: 'clamp(16px, 4vw, 24px)',
-        paddingTop: 'clamp(106px, 12vh, 120px)',
-        paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
+        padding: 'clamp(16px, 4vw, 24px)', 
+        paddingTop: 'clamp(106px, 12vh, 120px)', 
+        paddingBottom: 'max(20px, env(safe-area-inset-bottom))', 
       }}>
         <div style={{
           display: 'flex',
@@ -428,13 +367,13 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
         }}>
           <div style={{
             padding: '8px 12px',
-            backgroundColor: qualityWarning ? 'rgba(245, 158, 11, 0.8)' : 'rgba(0, 0, 0, 0.5)',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
             borderRadius: 'var(--radius-md)',
             color: 'white',
-            fontSize: 'clamp(14px, 3.5vw, 16px)',
+            fontSize: 'clamp(14px, 3.5vw, 16px)', 
             fontWeight: 600,
           }}>
-            {isReady ? `📸 ${actualResolution}` : '⏳ Initializing...'}
+            {isReady ? '📸 Camera Ready' : '⏳ Initializing...'}
           </div>
           <button
             onClick={handleCancel}
@@ -453,40 +392,23 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
             <X size={24} color="white" />
           </button>
         </div>
-
-        {/* ✅ QUALITY WARNING BANNER */}
-        {qualityWarning && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '10px 14px',
-            backgroundColor: 'rgba(245, 158, 11, 0.9)',
-            borderRadius: 'var(--radius-md)',
-            color: 'white',
-            fontSize: '13px',
-            fontWeight: 600,
-            marginBottom: '12px',
-          }}>
-            <AlertCircle size={18} />
-            <span>{qualityWarning}</span>
-          </div>
-        )}
-
         <div style={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'flex-start', 
           justifyContent: 'center',
           flex: 1,
         }}>
-          <div style={{
-            width: 'min(85vw, 400px)',
-            aspectRatio: '1.586',
-            border: '3px solid #10b981',
-            borderRadius: 'var(--radius-lg)',
-            position: 'relative',
-            boxShadow: '0 0 40px rgba(16, 185, 129, 0.6)',
-          }}>
+          <div 
+            ref={overlayRef}
+            style={{
+              width: 'min(85vw, 400px)',
+              aspectRatio: '1.586',
+              border: '3px solid #10b981',
+              borderRadius: 'var(--radius-lg)',
+              position: 'relative',
+              boxShadow: '0 0 40px rgba(16, 185, 129, 0.6)',
+            }}
+          >
             {[
               { top: '-3px', left: '-3px', borderTop: true, borderLeft: true },
               { top: '-3px', right: '-3px', borderTop: true, borderRight: true },
@@ -517,35 +439,22 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 'clamp(12px, 3vh, 20px)',
+          gap: 'clamp(12px, 3vh, 20px)', 
           paddingTop: 'clamp(16px, 3vh, 24px)',
           paddingBottom: 'max(60px, env(safe-area-inset-bottom))',
         }}>
-          {/* ✅ ENHANCED TIPS */}
           <div style={{
             textAlign: 'center',
             color: 'white',
             backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            padding: '12px 16px',
             borderRadius: 'var(--radius-md)',
-            maxWidth: '90%',
           }}>
             <p style={{ 
               margin: 0, 
-              fontSize: 'clamp(14px, 3.5vw, 16px)',
+              fontSize: 'clamp(14px, 3.5vw, 16px)', 
               fontWeight: 600 
             }}>
               Position ID within the frame
-            </p>
-            <p style={{ 
-              margin: '6px 0 0 0', 
-              fontSize: 'clamp(12px, 3vw, 13px)',
-              color: 'rgba(255, 255, 255, 0.9)',
-              fontWeight: 400,
-              lineHeight: 1.4
-            }}>
-              💡 Bright lighting • Hold steady • Flat surface<br/>
-              🎯 Barcode clearly visible • No glare or shadows
             </p>
           </div>
 
@@ -556,7 +465,7 @@ export function CameraCapture({ onCapture, onCancel, onError }: CameraCapturePro
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 'clamp(70px, 18vw, 80px)',
+              width: 'clamp(70px, 18vw, 80px)', 
               height: 'clamp(70px, 18vw, 80px)',
               backgroundColor: isReady ? 'white' : 'rgba(255, 255, 255, 0.3)',
               border: '4px solid white',
